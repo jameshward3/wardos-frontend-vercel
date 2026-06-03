@@ -16,7 +16,9 @@ export default function LoginPage({
   return (
     <main className="login-wrap">
       <section className="login-card">
-        <span className="brand-mark">JW</span>
+        <span className="brand-mark">
+          <img src="/assets/ward-circle-mark.svg" alt="WardOS mark" />
+        </span>
         <h1>WardOS</h1>
         <p className="muted">Private South Ward operations dashboard.</p>
         {errorMessage ? <p className="danger">{errorMessage}</p> : null}
