@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionValue, SESSION_COOKIE, SESSION_TTL_SECONDS } from "../../lib/session";
+import { createSessionValue, SESSION_COOKIE, SESSION_TTL_SECONDS } from "../../../lib/session";
 
 function safeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";

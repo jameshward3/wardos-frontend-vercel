@@ -10,7 +10,7 @@ export default function LoginPage({
         <h1>WardOS</h1>
         <p className="muted">Private South Ward operations dashboard.</p>
         {searchParams.error ? <p className="danger">Password not recognized.</p> : null}
-        <form className="form" action={`/login${searchParams.next ? `?next=${encodeURIComponent(searchParams.next)}` : ""}`} method="post">
+        <form className="form" action={`/api/login${searchParams.next ? `?next=${encodeURIComponent(searchParams.next)}` : ""}`} method="post">
           <label>
             Site Password
             <input type="password" name="password" autoComplete="current-password" required />
