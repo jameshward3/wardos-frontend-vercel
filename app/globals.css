@@ -426,6 +426,29 @@ h3 {
   color: var(--green);
 }
 
+.compact-metrics {
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  margin-bottom: 12px;
+}
+
+.compact-metrics .metric {
+  min-height: 92px;
+  padding: 14px;
+}
+
+.compact-metrics .metric strong {
+  font-size: 28px;
+}
+
+.panel-note {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+}
+
 .panel {
   overflow: hidden;
 }

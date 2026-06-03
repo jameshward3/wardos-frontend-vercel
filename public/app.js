@@ -1,4 +1,4 @@
-const API_BASE = localStorage.getItem("wardosApiBase") || "http://localhost:8000";
+const API_BASE = localStorage.getItem("wardosApiBase") || "/api";
 
 const routePageMap = {
   "/": "home",
@@ -18,6 +18,8 @@ const state = {
   search: "",
   dashboardOverview: null,
   briefing: null,
+  constituents: [],
+  constituentSummary: null,
   cases: [],
   legislation: [],
   budget: [],
@@ -45,7 +47,7 @@ const state = {
   selectedStoryId: "story-development-center",
   selectedLegislationId: "",
   legislationDetailOpen: true,
-  drafts: JSON.parse(localStorage.getItem("wardosDrafts") || "[]"),
+  drafts: [],
   completedActions: JSON.parse(localStorage.getItem("wardosCompletedActions") || "[]"),
 };
 
@@ -173,7 +175,7 @@ function h(strings, ...values) {
 }
 
 function saveDrafts() {
-  localStorage.setItem("wardosDrafts", JSON.stringify(state.drafts));
+  return null;
 }
 
 function saveActions() {
@@ -200,6 +202,19 @@ async function postJson(path, payload) {
   return response.json();
 }
 
+async function refreshOperationalData() {
+  state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
+  state.cases = await getJson("/cases", state.cases);
+  state.legislation = await getJson("/legislation", state.legislation);
+  state.budget = await getJson("/budget-watch", state.budget);
+  state.officeActions = await getJson("/office-actions", state.officeActions);
+  state.drafts = state.officeActions.filter((action) => ["draft_follow_up", "note"].includes(action.action_type));
+}
+
+function showSaveError(error) {
+  alert(`WardOS could not save this to the shared server. Check that the API is running, then try again.\n\n${error.message || error}`);
+}
+
 async function loadData() {
   const fallbackBriefing = {
     date: new Date().toISOString(),
@@ -215,6 +230,8 @@ async function loadData() {
 
   state.dashboardOverview = await getJson("/dashboard/overview", operationalOverviewFallback());
   state.briefing = await getJson("/briefing/daily", fallbackBriefing);
+  state.constituents = await getJson("/constituents?subgroup=May%202026%20Mail-In%20Voters&limit=1000", []);
+  state.constituentSummary = await getJson("/constituents/summary", null);
   state.cases = await getJson("/cases", []);
   state.legislation = await getJson("/legislation", []);
   state.budget = await getJson("/budget-watch", []);
@@ -222,6 +239,8 @@ async function loadData() {
   state.meetings = state.dashboardOverview.meetings || [];
   state.developments = state.dashboardOverview.developments || [];
   state.officeActions = state.dashboardOverview.actions || [];
+  state.officeActions = await getJson("/office-actions", state.officeActions);
+  state.drafts = state.officeActions.filter((action) => ["draft_follow_up", "note"].includes(action.action_type));
   state.githubBudget = await getJson("/integrations/github/budget", budgetFallback());
   state.githubProgress = await getJson("/integrations/github/progress", metricsFallback("First 100 Days"));
   state.githubLegislation = await getJson("/integrations/github/legislation", metricsFallback("Legislative Tracker"));
@@ -241,6 +260,8 @@ function operationalOverviewFallback() {
     sample_mode: false,
     metrics: {
       open_requests: 0,
+      constituents: 0,
+      mailin_voters: 0,
       council_meetings: 0,
       pending_legislation: 0,
       development_projects: 0,
@@ -378,7 +399,7 @@ function navCountFor(key) {
   const metrics = state.dashboardOverview?.metrics;
   if (!metrics) return "";
   const counts = {
-    constituents: metrics.open_requests,
+    constituents: metrics.constituents || metrics.open_requests,
     legislation: metrics.pending_legislation,
     development: metrics.development_projects,
     events: metrics.council_meetings,
@@ -616,50 +637,59 @@ function dashboardPage() {
 }
 
 function constituentsPage() {
+  const summary = state.constituentSummary || {};
+  const mailinRows = filterRows(state.constituents, ["full_name", "street", "city", "ward", "voter_status"]);
   const primaryCase = state.cases[0];
-  if (!primaryCase) {
+  const primaryConstituent = mailinRows[0] || state.constituents[0];
+  if (!primaryCase && !primaryConstituent) {
     return h`
       <div class="page-head">
-        <div><h1>Constituents</h1><p class="muted">Operational case tracker. Add real constituent needs to begin building profiles and timelines.</p></div>
+        <div><h1>Constituents</h1><p class="muted">Operational constituent CRM. Import voter subgroups and add constituent needs to build timelines.</p></div>
         <button class="primary" data-open-modal="case">Add Constituent Need</button>
       </div>
-      <section class="panel"><div class="panel-body"><div class="empty">No constituent cases yet.</div></div></section>
+      <section class="panel"><div class="panel-body"><div class="empty">No constituents or constituent cases yet.</div></div></section>
     `;
   }
+  const heroName = primaryConstituent?.full_name || primaryCase.constituent_name;
+  const heroAddress = primaryConstituent
+    ? `${primaryConstituent.street_no} ${primaryConstituent.street}${primaryConstituent.apt ? ` Apt ${primaryConstituent.apt}` : ""}, ${primaryConstituent.city}, ${primaryConstituent.state} ${primaryConstituent.zip}`
+    : primaryCase.notes || "No address on file";
+  const heroStatus = primaryConstituent?.voter_status || primaryCase.status;
   return h`
     <section class="panel">
       <div class="panel-body constituent-hero">
-        <div class="portrait">${initials(primaryCase.constituent_name)}</div>
+        <div class="portrait">${initials(heroName)}</div>
         <div>
-          <h1>${primaryCase.constituent_name} <span class="status good">${primaryCase.status}</span></h1>
-          <p class="muted">${primaryCase.topic}<br>${primaryCase.notes || "No notes yet"}<br><span class="blue">Case #${primaryCase.id}</span></p>
+          <h1>${heroName} <span class="status ${heroStatus === "Received" ? "good" : "warn"}">${heroStatus}</span></h1>
+          <p class="muted">${primaryConstituent?.subgroup || primaryCase.topic}<br>${heroAddress}<br><span class="blue">${primaryConstituent ? `Voter ID ${primaryConstituent.voter_id}` : `Case #${primaryCase.id}`}</span></p>
         </div>
         <div class="list">
-          <div class="list-row"><span>●</span><span>${primaryCase.priority}<br><small class="muted">Priority</small></span><span></span></div>
-          <div class="list-row"><span>▣</span><span>${primaryCase.created_at ? new Date(primaryCase.created_at).toLocaleDateString() : "Not dated"}<br><small class="muted">Created</small></span><span></span></div>
-          <div class="list-row"><span>→</span><span>Staff review required<br><small class="muted">Next step</small></span><span></span></div>
+          <div class="list-row"><span>●</span><span>${primaryConstituent?.ward || primaryCase.priority}<br><small class="muted">${primaryConstituent ? "Ward" : "Priority"}</small></span><span></span></div>
+          <div class="list-row"><span>▣</span><span>${primaryConstituent?.mailin_sent_date || primaryCase.created_at?.slice(0, 10) || "Not dated"}<br><small class="muted">${primaryConstituent ? "Ballot sent" : "Created"}</small></span><span></span></div>
+          <div class="list-row"><span>→</span><span>${primaryConstituent?.mailin_received_date || "Follow-up list ready"}<br><small class="muted">${primaryConstituent ? "Ballot received" : "Next step"}</small></span><span></span></div>
         </div>
         <div>
           <h3>Constituent Summary</h3>
-          <div class="budget-row"><span>Total Cases</span><strong>${state.cases.length}</strong><span></span></div>
-          <div class="budget-row"><span>Open Cases</span><strong class="orange">${state.cases.filter((row) => row.status !== "closed").length}</strong><span></span></div>
-          <div class="budget-row"><span>Closed Cases</span><strong class="green">${state.cases.filter((row) => row.status === "closed").length}</strong><span></span></div>
+          <div class="budget-row"><span>Constituents</span><strong>${summary.total || state.constituents.length}</strong><span></span></div>
+          <div class="budget-row"><span>Mail-in May 2026</span><strong class="blue">${summary.mailin_may_2026 || state.constituents.length}</strong><span></span></div>
+          <div class="budget-row"><span>Outstanding</span><strong class="orange">${summary.outstanding || 0}</strong><span></span></div>
+          <div class="budget-row"><span>Received</span><strong class="green">${summary.received || 0}</strong><span></span></div>
         </div>
       </div>
-      <div class="tabs">${["overview", "cases", "communications", "notes", "history", "documents"].map((tab) => `<button class="tab ${state.tab === tab ? "active" : ""}" data-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join("")}</div>
+      <div class="tabs">${["overview", "mail-in voters", "cases", "communications", "notes", "history", "documents"].map((tab) => `<button class="tab ${state.tab === tab ? "active" : ""}" data-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join("")}</div>
     </section>
     <section class="grid wide-right" style="margin-top:16px">
       <div class="grid two-col">
         <section class="panel">
-          <div class="panel-header"><h2>Constituent Timeline</h2><button class="secondary" data-open-draft="${primaryCase.constituent_name} Follow-up">Draft Follow-up</button></div>
+          <div class="panel-header"><h2>Mail-in Voter Subgroup</h2><button class="secondary" data-open-draft="${heroName} Follow-up">Draft Follow-up</button></div>
           <div class="panel-body timeline">
-            ${state.officeActions.map((action) => h`
-              <div class="list-row">
-                <span class="rank ${priorityTone(action.priority)}">●</span>
-                <span><small class="muted">${action.owner || "Unassigned"}</small><br><strong>${action.title}</strong><br><small class="muted">${action.notes || "No notes"}</small></span>
-                <span class="status">${action.status}</span>
-              </div>
-            `).join("") || `<div class="empty">No activity yet.</div>`}
+            <div class="grid metrics compact-metrics">
+              ${metric(summary.mailin_may_2026 || state.constituents.length, "Mail-in Voters", "May 2026", "blue")}
+              ${metric(summary.received || 0, "Received", "Returned", "green")}
+              ${metric(summary.outstanding || 0, "Outstanding", "Follow-up", "orange")}
+            </div>
+            <div class="panel-note">This subgroup is imported from the May 2026 South Ward mail-in voter list. No outreach is sent automatically.</div>
+            ${constituentRows(mailinRows)}
           </div>
         </section>
         <section class="panel">
@@ -693,18 +723,30 @@ function caseRows() {
   `).join("");
 }
 
+function constituentRows(rows) {
+  if (!rows.length) return `<div class="empty">No constituents match this search.</div>`;
+  return rows.slice(0, 30).map((row) => h`
+    <div class="list-row">
+      <span><small class="muted">${row.voter_id}</small><br><strong>${row.full_name}</strong><br><small class="muted">${row.street_no} ${row.street}${row.apt ? ` Apt ${row.apt}` : ""}</small></span>
+      <span><small class="muted">Sent</small><br>${row.mailin_sent_date || "Not set"}<br><small class="muted">Received: ${row.mailin_received_date || "Outstanding"}</small></span>
+      <span class="status ${row.voter_status === "Received" ? "good" : "warn"}">${row.voter_status || "Unknown"}</span>
+    </div>
+  `).join("");
+}
+
 function constituentSidePanel() {
+  const summary = state.constituentSummary || {};
   return h`
     <div class="grid">
       <section class="panel"><div class="panel-header"><h2>Constituent Details</h2></div><div class="panel-body">
-        <div class="budget-row"><span>Preferred Contact</span><strong>Not set</strong><span></span></div>
-        <div class="budget-row"><span>Language</span><strong>Not set</strong><span></span></div>
-        <div class="budget-row"><span>Ward</span><strong>Not set</strong><span></span></div>
-        <div class="budget-row"><span>Voting District</span><strong>Not set</strong><span></span></div>
-        <div class="budget-row"><span>Notes</span><strong>Use case notes until a constituent profile table is connected.</strong><span></span></div>
+        <div class="budget-row"><span>Subgroup</span><strong>May 2026 Mail-In Voters</strong><span></span></div>
+        <div class="budget-row"><span>Ward</span><strong>${Object.keys(summary.by_ward || {}).join(", ") || "South"}</strong><span></span></div>
+        <div class="budget-row"><span>Avg Return</span><strong>${summary.average_days_to_return || "N/A"} days</strong><span></span></div>
+        <div class="budget-row"><span>Auto-send</span><strong>Disabled</strong><span></span></div>
+        <div class="budget-row"><span>Notes</span><strong>Use manual actions for follow-ups and media/field coordination.</strong><span></span></div>
       </div></section>
       <section class="panel"><div class="panel-header"><h2>Recent Notes</h2><button class="link" data-open-modal="note">Add</button></div><div class="panel-body list">
-        ${state.drafts.slice(-3).reverse().map((draft) => `<div class="list-row"><span><strong>${draft.title}</strong><br><small class="muted">${draft.body.slice(0, 80)}</small></span><span></span><span></span></div>`).join("") || "<p class='muted'>No local drafts yet.</p>"}
+        ${state.drafts.slice(-3).reverse().map((draft) => `<div class="list-row"><span><strong>${draft.title}</strong><br><small class="muted">${String(draft.notes || draft.body || "").slice(0, 80)}</small></span><span></span><span></span></div>`).join("") || "<p class='muted'>No shared notes yet.</p>"}
       </div></section>
       <section class="panel"><div class="panel-header"><h2>Documents</h2><button class="link" data-open-draft="Document Upload">Upload</button></div><div class="panel-body list">
         <div class="empty">No linked documents yet.</div>
@@ -1826,12 +1868,15 @@ function bindEvents() {
       event.stopPropagation();
       const story = (state.mediaStories || []).find((item) => item.id === button.dataset.openSource);
       if (story) {
-        state.drafts.push({
+        postJson("/office-actions", {
           title: `Opened source: ${story.headline}`,
-          body: `External source opened for staff review: ${story.url}`,
-          createdAt: new Date().toISOString(),
-        });
-        saveDrafts();
+          notes: `External source opened for staff review: ${story.url}`,
+          action_type: "source_review",
+          status: "logged",
+          priority: "normal",
+          source_type: "media_mention",
+          source_id: story.id,
+        }).catch(() => null);
         window.open(story.url, "_blank", "noopener,noreferrer");
       }
     });
@@ -1906,11 +1951,9 @@ function openDraft(title) {
       .then(() => getJson("/office-actions", []))
       .then((actions) => {
         state.officeActions = actions;
+        state.drafts = actions.filter((action) => ["draft_follow_up", "note"].includes(action.action_type));
       })
-      .catch(() => {
-        state.drafts.push({ title, body, createdAt: new Date().toISOString() });
-        saveDrafts();
-      })
+      .catch(showSaveError)
       .finally(() => {
         closeModal();
         render();
@@ -1986,32 +2029,43 @@ function bindModalForms(type) {
   const handlers = {
     case: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
-      await postJson("/cases", payload).catch(() => state.cases.push({ id: Date.now(), ...payload }));
-      state.cases = await getJson("/cases", state.cases);
+      await postJson("/cases", payload);
+      await refreshOperationalData();
     },
     legislation: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
-      await postJson("/legislation", payload).catch(() => state.legislation.push({ id: Date.now(), ...payload }));
-      state.legislation = await getJson("/legislation", state.legislation);
+      await postJson("/legislation", payload);
+      await refreshOperationalData();
     },
     budget: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
-      await postJson("/budget-watch", payload).catch(() => state.budget.push({ id: Date.now(), ...payload }));
-      state.budget = await getJson("/budget-watch", state.budget);
+      await postJson("/budget-watch", payload);
+      await refreshOperationalData();
     },
     note: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
-      state.drafts.push({ ...payload, createdAt: new Date().toISOString() });
-      saveDrafts();
+      await postJson("/office-actions", {
+        title: payload.title,
+        notes: payload.body,
+        action_type: "note",
+        status: "draft",
+        priority: "normal",
+        source_type: "wardos_ui",
+      });
+      await refreshOperationalData();
     },
   };
   const form = document.querySelector("#modalBody form");
   if (form && handlers[type]) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      await handlers[type](form);
-      closeModal();
-      render();
+      try {
+        await handlers[type](form);
+        closeModal();
+        render();
+      } catch (error) {
+        showSaveError(error);
+      }
     });
   }
 }

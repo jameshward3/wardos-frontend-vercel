@@ -46,6 +46,7 @@ Create these variables in Vercel:
 ```env
 WARDOS_SITE_PASSWORD=
 WARDOS_AUTH_SECRET=
+WARDOS_API_URL=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
@@ -54,6 +55,8 @@ GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
 Do not hardcode passwords or OAuth secrets in the repo.
 
 `WARDOS_SITE_PASSWORD` remains as an emergency fallback. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
+
+`WARDOS_API_URL` is required if the Vercel site should save and read shared dashboard data. Point it to the reachable WardOS FastAPI base URL, without a trailing slash. If this is blank, the Vercel frontend can still render, but dashboard data calls to `/api` will not reach the Mac mini backend.
 
 ## Google Workspace Login
 
@@ -118,6 +121,7 @@ wardos-frontend-vercel
 ```text
 WARDOS_SITE_PASSWORD=your-private-password
 WARDOS_AUTH_SECRET=long-random-session-secret
+WARDOS_API_URL=https://your-reachable-wardos-api.example.com
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
