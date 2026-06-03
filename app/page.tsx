@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { WardOSApp } from "../components/wardos-app";
 
 export default function HomePage() {
-  redirect("/dashboard");
+  return <WardOSApp page="home" />;
 }
