@@ -40,8 +40,34 @@ export async function createSessionValue(secret: string) {
   return `${expiresAt}.${signature}`;
 }
 
+export async function createWorkspaceSessionValue(email: string, secret: string) {
+  const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
+  const subject = email.toLowerCase();
+  const unsignedValue = `google:${subject}:${expiresAt}`;
+  const signature = await sign(unsignedValue, secret);
+  return `${unsignedValue}:${signature}`;
+}
+
+function sessionSecret() {
+  return (
+    process.env.WARDOS_AUTH_SECRET?.trim() ||
+    process.env.WARDOS_SITE_PASSWORD?.trim() ||
+    process.env.GOOGLE_CLIENT_SECRET?.trim()
+  );
+}
+
 export async function isValidSessionValue(value: string | undefined, secret: string | undefined) {
   if (!value || !secret) return false;
+
+  if (value.startsWith("google:")) {
+    const [provider, email, expiresAt, signature] = value.split(":");
+    if (provider !== "google" || !email || !expiresAt || !signature) return false;
+    const expires = Number(expiresAt);
+    if (!Number.isFinite(expires) || expires < Date.now()) return false;
+    const expected = await sign(`${provider}:${email}:${expiresAt}`, secret);
+    return constantTimeEqual(signature, expected);
+  }
+
   const [expiresAt, signature] = value.split(".");
   if (!expiresAt || !signature) return false;
   const expires = Number(expiresAt);
@@ -51,5 +77,13 @@ export async function isValidSessionValue(value: string | undefined, secret: str
 }
 
 export async function hasValidSession(request: NextRequest) {
-  return isValidSessionValue(request.cookies.get(SESSION_COOKIE)?.value, process.env.WARDOS_SITE_PASSWORD?.trim());
+  const value = request.cookies.get(SESSION_COOKIE)?.value;
+  return (
+    (await isValidSessionValue(value, sessionSecret())) ||
+    (await isValidSessionValue(value, process.env.WARDOS_SITE_PASSWORD?.trim()))
+  );
+}
+
+export function getSessionSecret() {
+  return sessionSecret();
 }

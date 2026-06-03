@@ -12,13 +12,14 @@ The public `https://jw4o.com` site stays on Squarespace. Do not migrate, replace
 
 - Next.js app router frontend
 - `/login` page with password field
+- Google Workspace login restricted to `jameswardfororange.com`
 - Protected WardOS routes
 - Signed secure HTTP-only session cookie
 - Logout route
 - Eight-hour session expiration
 - Vercel deployment setup
 - Squarespace DNS instructions
-- `.env.example` with `WARDOS_SITE_PASSWORD`
+- `.env.example` with auth variables
 
 ## Protected Pages
 
@@ -36,17 +37,52 @@ The middleware protects these routes:
 /settings
 ```
 
-`/login` and `/logout` remain public so users can sign in and out.
+`/login`, `/logout`, and the Google OAuth callback routes remain public so users can sign in and out.
 
 ## Environment Variable
 
-Create a site password in Vercel:
+Create these variables in Vercel:
 
 ```env
 WARDOS_SITE_PASSWORD=
+WARDOS_AUTH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
 ```
 
-Do not hardcode this password in the repo.
+Do not hardcode passwords or OAuth secrets in the repo.
+
+`WARDOS_SITE_PASSWORD` remains as an emergency fallback. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
+
+## Google Workspace Login
+
+Create an OAuth client in Google Cloud for the `jameswardfororange.com` Workspace:
+
+1. Open Google Cloud Console.
+2. Create or select a project for WardOS.
+3. Configure the OAuth consent screen for internal Workspace use where available.
+4. Create an OAuth 2.0 Client ID for a Web application.
+5. Add this authorized redirect URI:
+
+```text
+https://wardos.jw4o.com/api/auth/google/callback
+```
+
+6. Copy the Client ID and Client Secret into Vercel as:
+
+```text
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+```
+
+7. Set:
+
+```text
+GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
+```
+
+WardOS verifies the Google ID token server-side and only accepts verified emails from `jameswardfororange.com`.
 
 ## Local Development
 
@@ -77,10 +113,14 @@ wardos-frontend-vercel
 ```
 
 5. Keep Framework Preset as **Next.js**.
-6. Add this environment variable:
+6. Add these environment variables:
 
 ```text
 WARDOS_SITE_PASSWORD=your-private-password
+WARDOS_AUTH_SECRET=long-random-session-secret
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
 ```
 
 7. Deploy the project.
@@ -148,7 +188,17 @@ https://wardos.jw4o.com
 https://wardos.jw4o.com/login
 ```
 
-3. Enter the password stored in Vercel as `WARDOS_SITE_PASSWORD`.
+3. Click **Continue with Google Workspace** and sign in with a `jameswardfororange.com` Google account.
+4. Confirm you land on:
+
+```text
+https://wardos.jw4o.com/dashboard
+```
+
+Password fallback:
+
+1. Visit `/login`.
+2. Enter the password stored in Vercel as `WARDOS_SITE_PASSWORD`.
 4. Confirm you land on:
 
 ```text
@@ -179,7 +229,8 @@ This keeps WardOS open while external stories open in a separate tab or window.
 ## Safety Notes
 
 - WardOS is private and password protected.
-- The password is read from `WARDOS_SITE_PASSWORD`.
+- Google Workspace login is restricted to `jameswardfororange.com`.
+- The fallback password is read from `WARDOS_SITE_PASSWORD`.
 - Sessions use signed HTTP-only cookies.
 - Sessions expire after eight hours.
 - The frontend does not auto-send emails or publish posts.
