@@ -51,5 +51,5 @@ export async function isValidSessionValue(value: string | undefined, secret: str
 }
 
 export async function hasValidSession(request: NextRequest) {
-  return isValidSessionValue(request.cookies.get(SESSION_COOKIE)?.value, process.env.WARDOS_SITE_PASSWORD);
+  return isValidSessionValue(request.cookies.get(SESSION_COOKIE)?.value, process.env.WARDOS_SITE_PASSWORD?.trim());
 }

@@ -7,9 +7,9 @@ function safeNextPath(value: string | null) {
 }
 
 export async function POST(request: NextRequest) {
-  const password = process.env.WARDOS_SITE_PASSWORD;
+  const password = process.env.WARDOS_SITE_PASSWORD?.trim();
   const formData = await request.formData();
-  const submittedPassword = String(formData.get("password") || "");
+  const submittedPassword = String(formData.get("password") || "").trim();
   const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
 
   if (!password || submittedPassword !== password) {
