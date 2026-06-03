@@ -711,12 +711,35 @@ function initials(name) {
     .join("") || "?";
 }
 
+function constituentAddress(row) {
+  if (!row) return "";
+  return [row.street_no, row.street, row.apt ? `Apt ${row.apt}` : "", row.city, row.state, row.zip].filter(Boolean).join(" ");
+}
+
+function constituentDatalists() {
+  const byName = new Map();
+  const byAddress = new Map();
+  (state.constituents || []).forEach((row) => {
+    if (row.full_name && !byName.has(row.full_name)) byName.set(row.full_name, row);
+    const address = constituentAddress(row);
+    if (address && !byAddress.has(address)) byAddress.set(address, row);
+  });
+  return h`
+    <datalist id="constituentNameOptions">
+      ${Array.from(byName.values()).slice(0, 500).map((row) => `<option value="${row.full_name}" data-address="${constituentAddress(row)}"></option>`).join("")}
+    </datalist>
+    <datalist id="constituentAddressOptions">
+      ${Array.from(byAddress.values()).slice(0, 500).map((row) => `<option value="${constituentAddress(row)}" data-name="${row.full_name}"></option>`).join("")}
+    </datalist>
+  `;
+}
+
 function caseRows() {
-  const rows = filterRows(state.cases, ["constituent_name", "topic", "notes", "status", "priority"]);
+  const rows = filterRows(state.cases, ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"]);
   if (!rows.length) return `<div class="empty">No cases match this search.</div>`;
   return rows.map((row) => h`
     <div class="list-row">
-      <span><small class="muted">#${row.id}</small><br><strong>${row.topic}</strong><br><small class="muted">${row.notes || row.constituent_name}</small></span>
+      <span><small class="muted">#${row.id}</small><br><strong>${row.topic}</strong><br><small class="muted">${row.constituent_name}${row.address_line ? ` · ${row.address_line}` : ""}${row.phone ? ` · ${row.phone}` : ""}${row.email ? ` · ${row.email}` : ""}</small></span>
       <span><small class="muted">Priority</small><br><span class="status ${row.priority === "high" ? "hot" : "warn"}">${row.priority}</span></span>
       <span class="status">${row.status}</span>
     </div>
@@ -1978,7 +2001,11 @@ function modalContent(type) {
   if (type === "case") {
     return h`
       <form class="form-grid" id="caseForm">
-        <div class="field"><label>Constituent Name</label><input name="constituent_name" required placeholder="Resident name"></div>
+        ${constituentDatalists()}
+        <div class="field"><label>Constituent Name</label><input name="constituent_name" required placeholder="Resident name" list="constituentNameOptions" autocomplete="off"></div>
+        <div class="field"><label>Address Line</label><input name="address_line" placeholder="Optional address" list="constituentAddressOptions" autocomplete="off"></div>
+        <div class="field"><label>Phone</label><input name="phone" type="tel" placeholder="Optional phone number"></div>
+        <div class="field"><label>Email</label><input name="email" type="email" placeholder="Optional email address"></div>
         <div class="field"><label>Need / Topic</label><input name="topic" required placeholder="Streetlight outage"></div>
         <div class="field"><label>Priority</label><select name="priority"><option>normal</option><option>medium</option><option>high</option></select></div>
         <div class="field"><label>Status</label><select name="status"><option>open</option><option>in progress</option><option>waiting</option><option>closed</option></select></div>
@@ -2026,6 +2053,7 @@ function bindModalForms(type) {
   document.querySelectorAll("#modalBody [data-open-draft]").forEach((button) => {
     button.addEventListener("click", () => openDraft(button.dataset.openDraft));
   });
+  if (type === "case") bindCaseAutofill();
   const handlers = {
     case: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
@@ -2068,6 +2096,34 @@ function bindModalForms(type) {
       }
     });
   }
+}
+
+function findConstituentByName(name) {
+  const value = String(name || "").trim().toLowerCase();
+  if (!value) return null;
+  return (state.constituents || []).find((row) => String(row.full_name || "").trim().toLowerCase() === value) || null;
+}
+
+function findConstituentByAddress(address) {
+  const value = String(address || "").trim().toLowerCase();
+  if (!value) return null;
+  return (state.constituents || []).find((row) => constituentAddress(row).trim().toLowerCase() === value) || null;
+}
+
+function bindCaseAutofill() {
+  const form = document.getElementById("caseForm");
+  if (!form) return;
+  const nameInput = form.elements.constituent_name;
+  const addressInput = form.elements.address_line;
+  if (!nameInput || !addressInput) return;
+  nameInput.addEventListener("input", () => {
+    const match = findConstituentByName(nameInput.value);
+    if (match && !addressInput.value.trim()) addressInput.value = constituentAddress(match);
+  });
+  addressInput.addEventListener("input", () => {
+    const match = findConstituentByAddress(addressInput.value);
+    if (match && !nameInput.value.trim()) nameInput.value = match.full_name;
+  });
 }
 
 function closeModal() {

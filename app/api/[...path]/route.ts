@@ -86,7 +86,7 @@ function dashboardOverview(store: Store) {
     priority_issues: openCases.slice(-5).reverse().map((row) => ({
       id: row.id,
       title: row.topic || "Constituent need",
-      meta: row.notes || row.constituent_name || "",
+      meta: [row.constituent_name, row.address_line, row.phone, row.email, row.notes].filter(Boolean).join(" · "),
       status: row.status || "open",
       priority: row.priority || "normal",
       created_at: row.created_at,
