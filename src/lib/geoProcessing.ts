@@ -71,7 +71,13 @@ export function recordsToVoterMapPoints(records: CanonicalVoterRecord[]): VoterM
       district: record.district,
       voted: record.voted,
       party: record.party,
+      age_band: record.age_band,
+      gender: record.gender,
       ballot_method: record.ballot_method,
+      household_count: 1,
+      geocoder_source: "seeded_demo",
+      match_score: 90,
+      needs_review: false,
     };
   });
 }

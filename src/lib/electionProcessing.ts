@@ -101,7 +101,10 @@ export function processElectionCsv(text: string): ElectionRecord[] {
       voted: Number(row["# Voted"] || 0) > 0,
       ward: normalizeWard(row.Ward),
       district: row.District || "Unknown",
+      street_number: row["Street No."],
       street_name: normalizeStreet(row["Street Name"]),
+      city: row["Residence City"],
+      state: row["Residence State"],
       zip: row["Residence Zip"],
       voting_location: row["Voting Location"],
     }));

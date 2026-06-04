@@ -51,20 +51,21 @@ function colorForPoint(point: VoterMapPoint) {
   return wardColors[point.ward as Exclude<WardName, "Unknown">] || "#0a2a4a";
 }
 
-function clusterPoints(points: VoterMapPoint[], zoom: number) {
+function clusterPoints(points: VoterMapPoint[], zoom: number, pointMode: "households" | "individuals") {
   const precision = zoom <= 12 ? 100 : zoom <= 13 ? 180 : 280;
   const clusters = new Map<string, { lat: number; lng: number; count: number; voted: number }>();
 
   points.forEach((point) => {
     const key = `${Math.round(point.lat * precision)}:${Math.round(point.lng * precision)}`;
+    const weight = pointMode === "individuals" ? point.household_count || 1 : 1;
     const existing = clusters.get(key);
     if (existing) {
-      existing.lat += point.lat;
-      existing.lng += point.lng;
-      existing.count += 1;
+      existing.lat += point.lat * weight;
+      existing.lng += point.lng * weight;
+      existing.count += weight;
       existing.voted += point.voted ? 1 : 0;
     } else {
-      clusters.set(key, { lat: point.lat, lng: point.lng, count: 1, voted: point.voted ? 1 : 0 });
+      clusters.set(key, { lat: point.lat * weight, lng: point.lng * weight, count: weight, voted: point.voted ? 1 : 0 });
     }
   });
 
@@ -76,7 +77,19 @@ function clusterPoints(points: VoterMapPoint[], zoom: number) {
 }
 
 export function MapView() {
-  const { analytics, geographyMode, layerMode, opacity, selectedWard, selectedDistrict, voterPoints } = useVoterStore();
+  const {
+    analytics,
+    geographyMode,
+    layerMode,
+    opacity,
+    selectedWard,
+    selectedDistrict,
+    selectedParty,
+    selectedAgeBand,
+    selectedGender,
+    pointMode,
+    voterPoints,
+  } = useVoterStore();
   const mapElement = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const layerRef = useRef<LeafletLayerGroup | null>(null);
@@ -88,9 +101,12 @@ export function MapView() {
       voterPoints.filter((point) => {
         if (selectedWard !== "All" && point.ward !== selectedWard) return false;
         if (selectedDistrict !== "All" && `${point.ward} ${point.district}` !== selectedDistrict) return false;
+        if (selectedParty !== "All" && point.party !== selectedParty) return false;
+        if (selectedAgeBand !== "All" && point.age_band !== selectedAgeBand) return false;
+        if (selectedGender !== "All" && point.gender !== selectedGender) return false;
         return true;
       }),
-    [selectedDistrict, selectedWard, voterPoints],
+    [selectedAgeBand, selectedDistrict, selectedGender, selectedParty, selectedWard, voterPoints],
   );
   const mapMode = zoom >= 14 ? "pins" : "heat bubbles";
 
@@ -145,24 +161,32 @@ export function MapView() {
     layer.clearLayers();
     if (zoom >= 14) {
       filteredPoints.forEach((point) => {
-        const marker = leaflet.circleMarker([point.lat, point.lng], {
-          radius: 4.5,
-          stroke: true,
-          color: "#ffffff",
-          weight: 1,
-          fillColor: colorForPoint(point),
-          fillOpacity: Math.max(0.38, opacity / 100),
-        });
-        marker.bindTooltip?.(`${point.ward} Ward, District ${point.district}<br />${point.ballot_method} ballot`, {
+        const copies = pointMode === "individuals" ? Math.max(1, point.household_count) : 1;
+        for (let index = 0; index < copies; index += 1) {
+          const angle = (index / copies) * Math.PI * 2;
+          const distance = pointMode === "individuals" && copies > 1 ? 0.000035 + Math.min(0.00016, copies * 0.000006) : 0;
+          const marker = leaflet.circleMarker([point.lat + Math.cos(angle) * distance, point.lng + Math.sin(angle) * distance], {
+            radius: pointMode === "households" ? Math.max(5, Math.min(12, 4 + Math.sqrt(point.household_count))) : 4,
+            stroke: true,
+            color: "#ffffff",
+            weight: 1,
+            fillColor: colorForPoint(point),
+            fillOpacity: Math.max(0.38, opacity / 100),
+          });
+          marker.bindTooltip?.(
+            `${point.ward} Ward, District ${point.district}<br />${pointMode === "households" ? `${point.household_count} voter household marker` : "Individual voter mode"}<br />${point.geocoder_source} geocode, score ${point.match_score}`,
+            {
             direction: "top",
             opacity: 0.92,
-        });
-        marker.addTo(layer);
+            },
+          );
+          marker.addTo(layer);
+        }
       });
       return;
     }
 
-    clusterPoints(filteredPoints, zoom).forEach((cluster) => {
+    clusterPoints(filteredPoints, zoom, pointMode).forEach((cluster) => {
       const radius = Math.max(12, Math.min(48, 8 + Math.sqrt(cluster.count) * 2.6));
       const bubble = leaflet.circleMarker([cluster.lat, cluster.lng], {
         radius,
@@ -172,7 +196,7 @@ export function MapView() {
         fillColor: "#d6b46d",
         fillOpacity: Math.max(0.25, opacity / 120),
       });
-      bubble.bindTooltip?.(`${cluster.count.toLocaleString()} voters`, { direction: "top", opacity: 0.92 });
+      bubble.bindTooltip?.(`${cluster.count.toLocaleString()} ${pointMode === "households" ? "households" : "voters"}`, { direction: "top", opacity: 0.92 });
       bubble.addTo(layer);
       leaflet
         .marker([cluster.lat, cluster.lng], {
@@ -186,7 +210,7 @@ export function MapView() {
         })
         .addTo(layer);
     });
-  }, [filteredPoints, opacity, zoom]);
+  }, [filteredPoints, opacity, pointMode, zoom]);
 
   return (
     <section className="ovi-map-shell">
@@ -196,6 +220,8 @@ export function MapView() {
           <span>{geographyMode} geography / {layerMode} layer / {mapMode}</span>
         </div>
         <div className="ovi-map-actions">
+          <button title="Household markers" onClick={() => setVoterState({ pointMode: "households" })} className={pointMode === "households" ? "active" : ""}>HH</button>
+          <button title="Individual voter markers" onClick={() => setVoterState({ pointMode: "individuals" })} className={pointMode === "individuals" ? "active" : ""}>1:1</button>
           <button title="Show all wards" onClick={() => setVoterState({ selectedWard: "All", selectedDistrict: "All" })}>All</button>
           <button title="North Ward" onClick={() => setVoterState({ selectedWard: "North", selectedDistrict: "All" })}>N</button>
           <button title="South Ward" onClick={() => setVoterState({ selectedWard: "South", selectedDistrict: "All" })}>S</button>
@@ -206,8 +232,8 @@ export function MapView() {
       <div ref={mapElement} className="ovi-map ovi-leaflet-map" role="application" aria-label="OpenStreetMap voter point and heat bubble map" />
       <div className="ovi-map-inspector">
         <span>{selectedWardMetric ? selectedWardMetric.label : "All Wards"}</span>
-        <strong>{filteredPoints.length.toLocaleString()} voter points</strong>
-        <small>Zoom in for individual privacy-safe voter points. Zoom out for merged heat bubbles. Points are approximate district-level placements, not exact residences.</small>
+        <strong>{filteredPoints.reduce((sum, point) => sum + (pointMode === "households" ? 1 : point.household_count), 0).toLocaleString()} {pointMode === "households" ? "household markers" : "voter points"}</strong>
+        <small>Map plots stored lat/lon only. Geocoding happens in the upload pipeline, never during map interaction. Low-confidence and out-of-bound addresses are held for review.</small>
       </div>
     </section>
   );

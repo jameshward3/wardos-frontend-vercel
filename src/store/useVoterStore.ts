@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { PlatformAnalytics, VoterMapPoint } from "../types/voter";
+import type { AgeBand, GenderCode, GeocodeReviewItem, PartyCode, PlatformAnalytics, VoterMapPoint } from "../types/voter";
 import { demoAnalytics } from "../lib/analytics";
 import { demoVoterMapPoints } from "../lib/geoProcessing";
 
@@ -16,6 +16,11 @@ interface VoterState {
   selectedDistrict: string;
   opacity: number;
   voterPoints: VoterMapPoint[];
+  geocodeReviewItems: GeocodeReviewItem[];
+  selectedParty: PartyCode | "All";
+  selectedAgeBand: AgeBand | "All";
+  selectedGender: GenderCode | "All";
+  pointMode: "households" | "individuals";
 }
 
 const listeners = new Set<() => void>();
@@ -27,6 +32,11 @@ let state: VoterState = {
   selectedDistrict: "All",
   opacity: 82,
   voterPoints: demoVoterMapPoints(),
+  geocodeReviewItems: [],
+  selectedParty: "All",
+  selectedAgeBand: "All",
+  selectedGender: "All",
+  pointMode: "households",
 };
 
 function emit() {

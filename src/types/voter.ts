@@ -17,7 +17,10 @@ export interface ElectionRecord {
   voted: boolean;
   ward: WardName;
   district: string;
+  street_number?: string;
   street_name?: string;
+  city?: string;
+  state?: string;
   zip?: string;
   voting_location?: string;
 }
@@ -28,7 +31,11 @@ export interface RegisteredVoterRecord {
   party: PartyCode;
   ward: WardName;
   district: string;
+  street_number?: string;
   street_name?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   age?: number;
   age_band: AgeBand;
   gender: GenderCode;
@@ -41,7 +48,11 @@ export interface CanonicalVoterRecord {
   party: PartyCode;
   ward: WardName;
   district: string;
+  street_number?: string;
   street_name?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   age?: number;
   age_band: AgeBand;
   gender: GenderCode;
@@ -125,7 +136,51 @@ export interface VoterMapPoint {
   lng: number;
   ward: WardName;
   district: string;
+  census_block?: string;
+  census_tract?: string;
+  parcel_id?: string;
   voted: boolean;
   party: PartyCode;
+  age_band: AgeBand;
+  gender: GenderCode;
   ballot_method: BallotMethod;
+  household_count: number;
+  geocoder_source: GeocoderSource;
+  match_score: number;
+  needs_review: boolean;
+}
+
+export type GeocoderSource = "census" | "mapbox" | "google" | "manual" | "seeded_demo" | "unmatched";
+
+export interface NormalizedAddress {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  normalized_key: string;
+}
+
+export interface GeocodeResult {
+  original_address: string;
+  normalized_address: NormalizedAddress;
+  lat?: number;
+  lon?: number;
+  geocoder_source: GeocoderSource;
+  match_score: number;
+  match_type: string;
+  matched_address?: string;
+  geocoded_at: string;
+  needs_review: boolean;
+  out_of_bounds: boolean;
+  ward: WardName;
+  voting_district: string;
+  census_block?: string;
+  census_tract?: string;
+  parcel_id?: string;
+  review_reason?: string;
+}
+
+export interface GeocodeReviewItem extends GeocodeResult {
+  voter_count: number;
 }

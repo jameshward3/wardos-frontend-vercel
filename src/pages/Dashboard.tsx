@@ -4,6 +4,7 @@ import { DataQualityPanel } from "../components/DataQualityPanel";
 import { DataUpload } from "../components/DataUpload";
 import { DistrictDashboard } from "../components/DistrictDashboard";
 import { FilterPanel } from "../components/FilterPanel";
+import { GeocodeReviewPanel } from "../components/GeocodeReviewPanel";
 import { KpiCards } from "../components/KpiCards";
 import { LayerControl } from "../components/LayerControl";
 import { MapView } from "../components/MapView";
@@ -96,6 +97,7 @@ export default function Dashboard() {
       <div id="upload">
         <DataUpload />
       </div>
+      <GeocodeReviewPanel />
 
       <footer className="ovi-footer">
         Future-ready connectors: PostgreSQL/PostGIS, Supabase, Azure SQL, ArcGIS, canvassing, predictive turnout modeling, legislative tracker, budget dashboard, tree canopy dashboard, and WardOS integration.
