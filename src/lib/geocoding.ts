@@ -56,29 +56,6 @@ function clean(value?: string): string {
   return (value || "").trim().replace(/\s+/g, " ");
 }
 
-function parseCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      cell += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === "," && !quoted) {
-      cells.push(cell.trim());
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-  cells.push(cell.trim());
-  return cells.map((value) => value.replace(/^"|"$/g, ""));
-}
-
 export function normalizeAddress(record: CanonicalVoterRecord, sourceIsExplicitlyLocal = true): NormalizedAddress {
   const street = clean(`${record.street_number || ""} ${record.street_name || ""}`).toUpperCase();
   const city = clean(record.city) || (sourceIsExplicitlyLocal ? "Orange" : "");
@@ -148,98 +125,26 @@ function unmatchedResult(address: NormalizedAddress, reason = "Unmatched by Cens
   return result;
 }
 
-async function mapboxFallback(address: NormalizedAddress): Promise<GeocodeResult | null> {
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  if (!token) return null;
-  const query = encodeURIComponent(originalAddress(address));
-  const response = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?country=US&limit=1&access_token=${token}`);
-  if (!response.ok) return null;
-  const data = await response.json();
-  const feature = data?.features?.[0];
-  const coordinates = feature?.center;
-  if (!Array.isArray(coordinates)) return null;
-  const relevance = typeof feature.relevance === "number" ? Math.round(feature.relevance * 100) : 80;
-  return resultFromCoordinates(address, Number(coordinates[1]), Number(coordinates[0]), "mapbox", feature.place_name, feature.place_type?.[0] || "Fallback", relevance);
-}
-
-async function googleFallback(address: NormalizedAddress): Promise<GeocodeResult | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_GEOCODING_KEY;
-  if (!key) return null;
-  const query = encodeURIComponent(originalAddress(address));
-  const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${key}`);
-  if (!response.ok) return null;
-  const data = await response.json();
-  const result = data?.results?.[0];
-  const location = result?.geometry?.location;
-  if (!location) return null;
-  const partial = Boolean(result.partial_match);
-  return resultFromCoordinates(address, Number(location.lat), Number(location.lng), "google", result.formatted_address, partial ? "Partial" : "Fallback", partial ? 78 : 90);
-}
-
-async function fallbackGeocode(address: NormalizedAddress): Promise<GeocodeResult | null> {
-  try {
-    const mapbox = await mapboxFallback(address);
-    if (mapbox && !mapbox.needs_review) return mapbox;
-    const google = await googleFallback(address);
-    return google || mapbox;
-  } catch {
-    return null;
-  }
-}
-
 export async function geocodeNormalizedAddress(address: NormalizedAddress): Promise<GeocodeResult> {
   const cached = await getCachedGeocode(address.normalized_key);
   if (cached && !cached.needs_review) return cached;
-  try {
-    const census = await censusBatchGeocode([address]);
-    const censusResult = census.get(address.normalized_key);
-    if (censusResult && !censusResult.needs_review) {
-      await setCachedGeocode(censusResult);
-      return censusResult;
-    }
-  } catch {
-    // Fall through to configured fallback geocoders.
-  }
-  const fallback = await fallbackGeocode(address);
-  const result = fallback || unmatchedResult(address);
+  const results = await serverBatchGeocode([address]);
+  const result = results.get(address.normalized_key) || unmatchedResult(address);
   await setCachedGeocode(result);
   return result;
 }
 
-async function censusBatchGeocode(addresses: NormalizedAddress[]): Promise<Map<string, GeocodeResult>> {
+async function serverBatchGeocode(addresses: NormalizedAddress[]): Promise<Map<string, GeocodeResult>> {
   if (!addresses.length) return new Map();
-  const form = new FormData();
-  const lines = addresses.map((address, index) => [index, address.street, address.city, address.state, address.zip].join(","));
-  form.append("addressFile", new Blob([lines.join("\n")], { type: "text/csv" }), "addresses.csv");
-  form.append("benchmark", "Public_AR_Current");
-
-  const response = await fetch("https://geocoding.geo.census.gov/geocoder/locations/addressbatch", {
+  const response = await fetch("/api/voter-intel/geocode", {
     method: "POST",
-    body: form,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ addresses }),
   });
-  if (!response.ok) throw new Error(`Census batch geocoder failed: ${response.status}`);
-  const text = await response.text();
-  const result = new Map<string, GeocodeResult>();
-  text
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .forEach((line) => {
-      const cells = parseCsvLine(line);
-      const index = Number(cells[0]);
-      const address = addresses[index];
-      if (!address) return;
-      const status = cells[2] || "";
-      const matchedAddress = cells[3] || undefined;
-      const lonLat = cells[5]?.split(/\s*,\s*/) || [];
-      const lon = Number(lonLat[0]);
-      const lat = Number(lonLat[1]);
-      if (status.toLowerCase() === "match" && Number.isFinite(lat) && Number.isFinite(lon)) {
-        result.set(address.normalized_key, resultFromCoordinates(address, lat, lon, "census", matchedAddress, cells[6] || "Match", 96));
-      } else {
-        result.set(address.normalized_key, unmatchedResult(address, "Unmatched by U.S. Census Geocoder"));
-      }
-    });
-  return result;
+  if (!response.ok) throw new Error(`Geocoding proxy failed: ${response.status}`);
+  const body = await response.json();
+  const rows = Array.isArray(body?.results) ? (body.results as GeocodeResult[]) : [];
+  return new Map(rows.map((row) => [row.normalized_address.normalized_key, row]));
 }
 
 function groupHouseholds(records: CanonicalVoterRecord[], geocodes: Map<string, GeocodeResult>, sourceIsExplicitlyLocal: boolean): VoterMapPoint[] {
@@ -300,17 +205,11 @@ export async function geocodeVoterRecords(records: CanonicalVoterRecord[], sourc
   for (let index = 0; index < uncached.length; index += 10000) {
     const batch = uncached.slice(index, index + 10000);
     try {
-      const censusResults = await censusBatchGeocode(batch);
-      batch.forEach((address) => geocodes.set(address.normalized_key, censusResults.get(address.normalized_key) || unmatchedResult(address)));
+      const batchResults = await serverBatchGeocode(batch);
+      batch.forEach((address) => geocodes.set(address.normalized_key, batchResults.get(address.normalized_key) || unmatchedResult(address)));
     } catch {
-      batch.forEach((address) => geocodes.set(address.normalized_key, unmatchedResult(address, "Census batch geocoder unavailable; configure Mapbox or Google fallback")));
+      batch.forEach((address) => geocodes.set(address.normalized_key, unmatchedResult(address, "Server geocoding proxy unavailable")));
     }
-  }
-
-  const fallbackTargets = [...geocodes.values()].filter((result) => result.geocoder_source === "unmatched");
-  for (const target of fallbackTargets) {
-    const fallback = await fallbackGeocode(target.normalized_address);
-    if (fallback) geocodes.set(target.normalized_address.normalized_key, fallback);
   }
 
   await Promise.all([...geocodes.values()].map(setCachedGeocode));
