@@ -1774,6 +1774,607 @@ h3 {
   }
 }
 
+.ovi-app {
+  min-height: 100vh;
+  padding: 24px;
+  color: #132033;
+  background: #f4f6f9;
+  font-family: Inter, "Source Sans Pro", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ovi-hero {
+  min-height: 180px;
+  padding: 24px 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  color: #ffffff;
+  background:
+    linear-gradient(90deg, rgba(6, 17, 29, 0.96), rgba(13, 42, 74, 0.9)),
+    url("/assets/orange-wards-map.svg") center right / contain no-repeat;
+  border: 1px solid rgba(214, 180, 109, 0.26);
+  border-radius: 8px;
+}
+
+.ovi-hero p,
+.ovi-hero h1,
+.ovi-hero span {
+  margin: 0;
+}
+
+.ovi-hero p {
+  color: #d6b46d;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ovi-hero h1 {
+  max-width: 820px;
+  margin-top: 10px;
+  font-size: clamp(36px, 5vw, 64px);
+  line-height: 0.96;
+}
+
+.ovi-hero span {
+  display: block;
+  max-width: 720px;
+  margin-top: 14px;
+  color: #dce5ef;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.ovi-hero nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ovi-hero a {
+  min-height: 36px;
+  padding: 8px 12px;
+  color: #ffffff;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ovi-kpis {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.ovi-kpi,
+.ovi-panel,
+.ovi-map-shell {
+  background: #ffffff;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+  box-shadow: 0 12px 26px rgba(6, 17, 29, 0.07);
+}
+
+.ovi-kpi {
+  min-height: 116px;
+  padding: 14px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.ovi-kpi span,
+.ovi-kpi small,
+.ovi-panel-head span,
+.ovi-control-group label,
+.ovi-range span,
+.ovi-filters label,
+.ovi-upload p,
+.ovi-upload span,
+.ovi-table span,
+.ovi-profile dt,
+.ovi-street-list small,
+.ovi-footer {
+  color: #637083;
+}
+
+.ovi-kpi strong {
+  color: #06111d;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.ovi-kpi small {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.ovi-workbench {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr) 330px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.ovi-side-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.ovi-panel {
+  overflow: hidden;
+}
+
+.ovi-panel-head {
+  min-height: 54px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e3e8ef;
+  background: #fbfcfe;
+}
+
+.ovi-panel-head h2,
+.ovi-panel-head h3 {
+  margin: 0;
+  color: #06111d;
+}
+
+.ovi-panel-head strong {
+  color: #0d5ca6;
+  font-size: 20px;
+}
+
+.ovi-layer-control,
+.ovi-filters,
+.ovi-upload {
+  padding-bottom: 16px;
+}
+
+.ovi-control-group,
+.ovi-range,
+.ovi-filters label,
+.ovi-upload label:not(.ovi-dropzone) {
+  padding: 14px 16px 0;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ovi-segments {
+  display: grid;
+  gap: 7px;
+}
+
+.ovi-segments.compact {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.ovi-segments button,
+.ovi-map-actions button {
+  min-height: 36px;
+  color: #18283b;
+  background: #f1f4f8;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+}
+
+.ovi-segments button.active {
+  color: #ffffff;
+  background: #0a2a4a;
+  border-color: #0a2a4a;
+}
+
+.ovi-range input {
+  accent-color: #d6b46d;
+}
+
+.ovi-legend {
+  padding: 16px;
+  display: grid;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.ovi-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ovi-legend i {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.ovi-legend .low { background: #dce6f3; }
+.ovi-legend .mid { background: #d6b46d; }
+.ovi-legend .high { background: #0a2a4a; }
+
+.ovi-map-shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 640px;
+}
+
+.ovi-map-toolbar {
+  min-height: 58px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #d9e0e8;
+}
+
+.ovi-map-toolbar div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.ovi-map-toolbar span {
+  color: #637083;
+  font-size: 13px;
+}
+
+.ovi-map-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.ovi-map-actions button {
+  width: 34px;
+  min-height: 34px;
+  font-weight: 900;
+}
+
+.ovi-map {
+  width: 100%;
+  height: 520px;
+  display: block;
+}
+
+.ovi-map polygon {
+  cursor: pointer;
+  transition: opacity 160ms ease, stroke-width 160ms ease;
+}
+
+.ovi-map polygon:hover {
+  opacity: 0.95;
+}
+
+.ovi-map-label {
+  font-size: 18px;
+  font-weight: 900;
+  fill: #06111d;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 4px;
+}
+
+.ovi-map-inspector {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100% - 32px));
+  padding: 14px;
+  display: grid;
+  gap: 5px;
+  color: #ffffff;
+  background: rgba(6, 17, 29, 0.9);
+  border: 1px solid rgba(214, 180, 109, 0.3);
+  border-radius: 8px;
+}
+
+.ovi-map-inspector strong {
+  font-size: 24px;
+}
+
+.ovi-map-inspector small {
+  color: #cbd6e2;
+  line-height: 1.4;
+}
+
+.ovi-quality-score {
+  margin: 16px;
+  height: 12px;
+  background: #e8edf4;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ovi-quality-score span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #0a2a4a, #d6b46d);
+}
+
+.ovi-quality-grid,
+.ovi-metric-list,
+.ovi-party-list,
+.ovi-street-list {
+  padding: 0 16px 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.ovi-quality-grid div,
+.ovi-metric-list div,
+.ovi-party-list div,
+.ovi-street-list div {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.ovi-quality-grid strong,
+.ovi-metric-list strong,
+.ovi-party-list strong,
+.ovi-street-list strong {
+  color: #06111d;
+}
+
+.ovi-filters select,
+.ovi-upload select {
+  min-height: 40px;
+  padding: 0 10px;
+  color: #132033;
+  background: #ffffff;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+}
+
+.ovi-analytics-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.8fr);
+  gap: 14px;
+}
+
+.ovi-chart-grid {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.ovi-chart-grid h3 {
+  margin: 0 0 12px;
+}
+
+.ovi-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.ovi-bar-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.ovi-bar-row div {
+  height: 12px;
+  background: #edf1f5;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ovi-bar-row i {
+  display: block;
+  height: 100%;
+  background: #0a2a4a;
+}
+
+.ovi-donut-layout {
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.ovi-donut {
+  width: 180px;
+  height: 180px;
+  padding: 22px;
+  border-radius: 50%;
+}
+
+.ovi-donut div {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  background: #ffffff;
+  border-radius: 50%;
+}
+
+.ovi-donut strong {
+  color: #06111d;
+  font-size: 32px;
+}
+
+.ovi-party-list i {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.ovi-party-list div {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+}
+
+.ovi-intel-grid,
+.ovi-profile-grid {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.ovi-intel-grid article,
+.ovi-profile {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  background: #f7f9fc;
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+}
+
+.ovi-intel-grid strong,
+.ovi-profile strong {
+  color: #06111d;
+  font-size: 22px;
+}
+
+.ovi-intel-grid span {
+  color: #566479;
+  line-height: 1.45;
+}
+
+.ovi-profile div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ovi-profile h3 {
+  margin: 0;
+}
+
+.ovi-profile dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.ovi-profile dd {
+  margin: 0;
+  color: #06111d;
+  font-weight: 800;
+}
+
+.ovi-table {
+  padding: 16px;
+  display: grid;
+  gap: 0;
+  overflow-x: auto;
+}
+
+.ovi-table-head,
+.ovi-table > div:not(.ovi-table-head) {
+  min-width: 720px;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 1fr 0.8fr 1.5fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #e7ecf2;
+}
+
+.ovi-table-head {
+  color: #637083;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ovi-dropzone {
+  margin: 16px;
+  min-height: 160px;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+  border: 2px dashed #aab7c8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.ovi-dropzone input {
+  display: none;
+}
+
+.ovi-upload p {
+  margin: 0 16px;
+}
+
+.ovi-footer {
+  margin-top: 16px;
+  padding: 18px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+@media (max-width: 1280px) {
+  .ovi-kpis {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .ovi-workbench,
+  .ovi-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ovi-side-stack {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .ovi-app {
+    padding: 12px;
+  }
+
+  .ovi-hero,
+  .ovi-side-stack,
+  .ovi-chart-grid,
+  .ovi-donut-layout,
+  .ovi-intel-grid,
+  .ovi-profile-grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .ovi-hero nav {
+    justify-content: flex-start;
+  }
+
+  .ovi-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .ovi-map {
+    height: 390px;
+  }
+
+  .ovi-map-shell {
+    min-height: 530px;
+  }
+}
+
 .login-wrap {
   min-height: 100vh;
   display: grid;

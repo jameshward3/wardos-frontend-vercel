@@ -1,5 +1,5 @@
-import { WardOSApp } from "../components/wardos-app";
+import Dashboard from "../src/pages/Dashboard";
 
 export default function HomePage() {
-  return <WardOSApp page="home" />;
+  return <Dashboard />;
 }

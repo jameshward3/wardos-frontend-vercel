@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WardOS",
-  description: "Private South Ward operations dashboard",
+  title: "Orange Voter Intelligence Platform",
+  description: "Civic voter analytics dashboard for Orange Township, New Jersey",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
