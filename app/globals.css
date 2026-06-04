@@ -2043,6 +2043,34 @@ h3 {
   display: block;
 }
 
+.ovi-leaflet-map {
+  position: relative;
+  z-index: 1;
+  min-height: 520px;
+  background: #dfe7ef;
+}
+
+.ovi-heat-label {
+  display: grid;
+  place-items: center;
+  color: #06111d;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.ovi-heat-label span {
+  min-width: 28px;
+  min-height: 20px;
+  padding: 2px 6px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(6, 17, 29, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(6, 17, 29, 0.18);
+}
+
 .ovi-map polygon {
   cursor: pointer;
   transition: opacity 160ms ease, stroke-width 160ms ease;

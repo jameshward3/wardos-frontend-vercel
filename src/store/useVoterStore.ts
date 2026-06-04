@@ -1,8 +1,9 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { PlatformAnalytics } from "../types/voter";
+import type { PlatformAnalytics, VoterMapPoint } from "../types/voter";
 import { demoAnalytics } from "../lib/analytics";
+import { demoVoterMapPoints } from "../lib/geoProcessing";
 
 type LayerMode = "turnout" | "registered" | "party" | "ballot" | "persuasion" | "gotv" | "swing";
 type GeographyMode = "ward" | "district" | "street";
@@ -14,6 +15,7 @@ interface VoterState {
   selectedWard: string;
   selectedDistrict: string;
   opacity: number;
+  voterPoints: VoterMapPoint[];
 }
 
 const listeners = new Set<() => void>();
@@ -24,6 +26,7 @@ let state: VoterState = {
   selectedWard: "All",
   selectedDistrict: "All",
   opacity: 82,
+  voterPoints: demoVoterMapPoints(),
 };
 
 function emit() {

@@ -1,78 +1,213 @@
 "use client";
 
-import { districtPoints, opacityForRate, wardPolygons } from "../lib/geoProcessing";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { setVoterState, useVoterStore } from "../store/useVoterStore";
+import type { VoterMapPoint, WardName } from "../types/voter";
 
-const wardColors = {
+type LeafletMap = {
+  setView: (center: [number, number], zoom: number) => LeafletMap;
+  on: (event: string, handler: () => void) => LeafletMap;
+  off: (event: string, handler: () => void) => LeafletMap;
+  getZoom: () => number;
+  remove: () => void;
+};
+
+type LeafletLayerGroup = {
+  clearLayers: () => void;
+  addTo: (map: LeafletMap) => LeafletLayerGroup;
+};
+
+type LeafletLayer = {
+  addTo: (target: LeafletLayerGroup | LeafletMap) => LeafletLayer;
+  bindTooltip?: (content: string, options?: Record<string, unknown>) => LeafletLayer;
+};
+
+type LeafletApi = {
+  map: (element: HTMLElement, options?: Record<string, unknown>) => LeafletMap;
+  tileLayer: (url: string, options?: Record<string, unknown>) => LeafletLayer;
+  layerGroup: () => LeafletLayerGroup;
+  circleMarker: (latlng: [number, number], options?: Record<string, unknown>) => LeafletLayer;
+  marker: (latlng: [number, number], options?: Record<string, unknown>) => LeafletLayer;
+  divIcon: (options?: Record<string, unknown>) => unknown;
+};
+
+declare global {
+  interface Window {
+    L?: LeafletApi;
+  }
+}
+
+const wardColors: Record<Exclude<WardName, "Unknown">, string> = {
   North: "#d6b46d",
   South: "#2f7dd1",
   East: "#2aa876",
   West: "#a65f5f",
 };
 
+function colorForPoint(point: VoterMapPoint) {
+  if (point.ballot_method === "Mail") return "#d6b46d";
+  if (point.ballot_method === "Provisional") return "#a65f5f";
+  if (point.party === "UNA") return "#2aa876";
+  return wardColors[point.ward as Exclude<WardName, "Unknown">] || "#0a2a4a";
+}
+
+function clusterPoints(points: VoterMapPoint[], zoom: number) {
+  const precision = zoom <= 12 ? 100 : zoom <= 13 ? 180 : 280;
+  const clusters = new Map<string, { lat: number; lng: number; count: number; voted: number }>();
+
+  points.forEach((point) => {
+    const key = `${Math.round(point.lat * precision)}:${Math.round(point.lng * precision)}`;
+    const existing = clusters.get(key);
+    if (existing) {
+      existing.lat += point.lat;
+      existing.lng += point.lng;
+      existing.count += 1;
+      existing.voted += point.voted ? 1 : 0;
+    } else {
+      clusters.set(key, { lat: point.lat, lng: point.lng, count: 1, voted: point.voted ? 1 : 0 });
+    }
+  });
+
+  return [...clusters.values()].map((cluster) => ({
+    ...cluster,
+    lat: cluster.lat / cluster.count,
+    lng: cluster.lng / cluster.count,
+  }));
+}
+
 export function MapView() {
-  const { analytics, geographyMode, layerMode, opacity, selectedWard } = useVoterStore();
+  const { analytics, geographyMode, layerMode, opacity, selectedWard, selectedDistrict, voterPoints } = useVoterStore();
+  const mapElement = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const layerRef = useRef<LeafletLayerGroup | null>(null);
+  const [zoom, setZoom] = useState(12);
+
   const selectedWardMetric = analytics.wards.find((ward) => ward.ward === selectedWard);
+  const filteredPoints = useMemo(
+    () =>
+      voterPoints.filter((point) => {
+        if (selectedWard !== "All" && point.ward !== selectedWard) return false;
+        if (selectedDistrict !== "All" && `${point.ward} ${point.district}` !== selectedDistrict) return false;
+        return true;
+      }),
+    [selectedDistrict, selectedWard, voterPoints],
+  );
+  const mapMode = zoom >= 14 ? "pins" : "heat bubbles";
+
+  useEffect(() => {
+    let cancelled = false;
+    let attempts = 0;
+
+    function initialize() {
+      if (cancelled || mapRef.current || !mapElement.current) return;
+      const leaflet = window.L;
+      if (!leaflet) {
+        attempts += 1;
+        if (attempts < 40) window.setTimeout(initialize, 100);
+        return;
+      }
+
+      const map = leaflet.map(mapElement.current, {
+        center: [40.7669, -74.2353],
+        zoom: 12,
+        minZoom: 11,
+        maxZoom: 17,
+        scrollWheelZoom: true,
+      }).setView([40.7669, -74.2353], 12);
+      leaflet
+        .tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; OpenStreetMap contributors',
+          maxZoom: 19,
+        })
+        .addTo(map);
+      const layer = leaflet.layerGroup().addTo(map);
+      const onZoom = () => setZoom(map.getZoom());
+      map.on("zoomend", onZoom);
+      mapRef.current = map;
+      layerRef.current = layer;
+      setZoom(map.getZoom());
+    }
+
+    initialize();
+    return () => {
+      cancelled = true;
+      mapRef.current?.remove();
+      mapRef.current = null;
+      layerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const leaflet = window.L;
+    const layer = layerRef.current;
+    if (!leaflet || !layer) return;
+
+    layer.clearLayers();
+    if (zoom >= 14) {
+      filteredPoints.forEach((point) => {
+        const marker = leaflet.circleMarker([point.lat, point.lng], {
+          radius: 4.5,
+          stroke: true,
+          color: "#ffffff",
+          weight: 1,
+          fillColor: colorForPoint(point),
+          fillOpacity: Math.max(0.38, opacity / 100),
+        });
+        marker.bindTooltip?.(`${point.ward} Ward, District ${point.district}<br />${point.ballot_method} ballot`, {
+            direction: "top",
+            opacity: 0.92,
+        });
+        marker.addTo(layer);
+      });
+      return;
+    }
+
+    clusterPoints(filteredPoints, zoom).forEach((cluster) => {
+      const radius = Math.max(12, Math.min(48, 8 + Math.sqrt(cluster.count) * 2.6));
+      const bubble = leaflet.circleMarker([cluster.lat, cluster.lng], {
+        radius,
+        stroke: true,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#d6b46d",
+        fillOpacity: Math.max(0.25, opacity / 120),
+      });
+      bubble.bindTooltip?.(`${cluster.count.toLocaleString()} voters`, { direction: "top", opacity: 0.92 });
+      bubble.addTo(layer);
+      leaflet
+        .marker([cluster.lat, cluster.lng], {
+          interactive: false,
+          icon: leaflet.divIcon({
+            className: "ovi-heat-label",
+            html: `<span>${cluster.count}</span>`,
+            iconSize: [44, 22],
+            iconAnchor: [22, 11],
+          }),
+        })
+        .addTo(layer);
+    });
+  }, [filteredPoints, opacity, zoom]);
 
   return (
     <section className="ovi-map-shell">
       <div className="ovi-map-toolbar">
         <div>
-          <strong>Orange Township GIS View</strong>
-          <span>{geographyMode} geography / {layerMode} layer</span>
+          <strong>Orange Township Open Map</strong>
+          <span>{geographyMode} geography / {layerMode} layer / {mapMode}</span>
         </div>
         <div className="ovi-map-actions">
-          <button title="Zoom in">+</button>
-          <button title="Zoom out">-</button>
-          <button title="Search">⌕</button>
+          <button title="Show all wards" onClick={() => setVoterState({ selectedWard: "All", selectedDistrict: "All" })}>All</button>
+          <button title="North Ward" onClick={() => setVoterState({ selectedWard: "North", selectedDistrict: "All" })}>N</button>
+          <button title="South Ward" onClick={() => setVoterState({ selectedWard: "South", selectedDistrict: "All" })}>S</button>
+          <button title="East Ward" onClick={() => setVoterState({ selectedWard: "East", selectedDistrict: "All" })}>E</button>
+          <button title="West Ward" onClick={() => setVoterState({ selectedWard: "West", selectedDistrict: "All" })}>W</button>
         </div>
       </div>
-      <svg className="ovi-map" viewBox="0 0 500 460" role="img" aria-label="Aggregated voter analytics map of Orange Township wards and districts">
-        <defs>
-          <pattern id="street-grid" width="42" height="42" patternUnits="userSpaceOnUse" patternTransform="rotate(24)">
-            <path d="M 42 0 L 0 0 0 42" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-          </pattern>
-        </defs>
-        <rect width="500" height="460" fill="#e9edf2" />
-        <rect width="500" height="460" fill="url(#street-grid)" />
-        <path d="M38 88 C122 6 274 8 394 78 C490 132 476 322 350 415 C222 506 58 424 22 298 C-6 198 2 128 38 88Z" fill="#f8fafc" stroke="#8a98a8" strokeWidth="2" />
-        {analytics.wards.map((metric) => {
-          const fillOpacity = layerMode === "registered" ? Math.min(0.95, metric.registered / 4000) : opacityForRate(metric.turnout_rate);
-          return (
-            <g key={metric.ward}>
-              <polygon
-                points={wardPolygons[metric.ward as keyof typeof wardPolygons]}
-                fill={wardColors[metric.ward as keyof typeof wardColors]}
-                opacity={(fillOpacity * opacity) / 100}
-                stroke={selectedWard === metric.ward ? "#04111f" : "#ffffff"}
-                strokeWidth={selectedWard === metric.ward ? 5 : 2}
-                onClick={() => setVoterState({ selectedWard: metric.ward })}
-              />
-            </g>
-          );
-        })}
-        {geographyMode !== "ward" &&
-          districtPoints.map((point) => {
-            const district = analytics.districts.find((item) => item.district === point.id && item.ward === point.ward);
-            const radius = Math.max(14, Math.min(42, (district?.voted || 90) / 10));
-            return (
-              <g key={`${point.ward}-${point.id}`}>
-                <circle cx={point.x} cy={point.y} r={radius} fill="#04111f" opacity="0.18" />
-                <circle cx={point.x} cy={point.y} r={radius * 0.68} fill="#d6b46d" opacity="0.86" />
-                <text x={point.x} y={point.y + 5} textAnchor="middle" fontSize="15" fontWeight="800" fill="#06111d">{point.id}</text>
-              </g>
-            );
-          })}
-        {analytics.wards.map((metric, index) => (
-          <text key={metric.id} x={[210, 198, 366, 88][index]} y={[122, 348, 238, 270][index]} textAnchor="middle" className="ovi-map-label">
-            {metric.ward}
-          </text>
-        ))}
-      </svg>
+      <div ref={mapElement} className="ovi-map ovi-leaflet-map" role="application" aria-label="OpenStreetMap voter point and heat bubble map" />
       <div className="ovi-map-inspector">
         <span>{selectedWardMetric ? selectedWardMetric.label : "All Wards"}</span>
-        <strong>{selectedWardMetric ? `${selectedWardMetric.turnout_rate}% turnout` : `${analytics.turnout_rate}% township turnout`}</strong>
-        <small>Privacy mode: aggregate counts only. No names, voter IDs, house numbers, phone numbers, or email fields are rendered.</small>
+        <strong>{filteredPoints.length.toLocaleString()} voter points</strong>
+        <small>Zoom in for individual privacy-safe voter points. Zoom out for merged heat bubbles. Points are approximate district-level placements, not exact residences.</small>
       </div>
     </section>
   );

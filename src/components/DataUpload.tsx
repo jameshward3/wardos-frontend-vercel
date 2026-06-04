@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { buildAnalytics } from "../lib/analytics";
 import { processElectionCsv } from "../lib/electionProcessing";
+import { recordsToVoterMapPoints } from "../lib/geoProcessing";
 import { mergeVoterDatasets } from "../lib/voterMerge";
 import { setVoterState } from "../store/useVoterStore";
 import type { DatasetKind } from "../types/voter";
@@ -23,8 +24,8 @@ export function DataUpload() {
         deduped.records,
         deduped.report.exact_voter_id_duplicates + deduped.report.high_confidence_duplicates,
       );
-      setVoterState({ analytics });
-      setStatus(`Imported ${electionRecords.length.toLocaleString()} election records. Aggregates refreshed.`);
+      setVoterState({ analytics, voterPoints: recordsToVoterMapPoints(deduped.records) });
+      setStatus(`Imported ${electionRecords.length.toLocaleString()} election records. Map points and aggregates refreshed.`);
       return;
     }
     if (file.name.toLowerCase().endsWith(".geojson")) {

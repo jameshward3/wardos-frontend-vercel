@@ -118,3 +118,14 @@ export interface PlatformAnalytics {
 }
 
 export type DatasetKind = "election-history" | "registered-voters" | "ward-geojson" | "district-geojson";
+
+export interface VoterMapPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  ward: WardName;
+  district: string;
+  voted: boolean;
+  party: PartyCode;
+  ballot_method: BallotMethod;
+}
