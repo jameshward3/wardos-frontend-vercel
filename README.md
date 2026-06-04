@@ -50,6 +50,10 @@ WARDOS_API_URL=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
+WARDOS_CASE_LOG_REPO=
+WARDOS_CASE_LOG_TOKEN=
+WARDOS_CASE_LOG_BRANCH=main
+WARDOS_CASE_LOG_PATH=data/constituent_cases.csv
 ```
 
 Do not hardcode passwords or OAuth secrets in the repo.
@@ -57,6 +61,32 @@ Do not hardcode passwords or OAuth secrets in the repo.
 `WARDOS_SITE_PASSWORD` remains as an emergency fallback. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
 
 `WARDOS_API_URL` is required if the Vercel site should save and read shared dashboard data. Point it to the reachable WardOS FastAPI base URL, without a trailing slash. If this is blank, the Vercel frontend can still render, but dashboard data calls to `/api` will not reach the Mac mini backend.
+
+## Persistent Constituent Cases
+
+WardOS supports two persistent paths for constituent cases:
+
+- Local Mac mini server: cases live in Postgres and an Excel-readable CSV is generated at `/app/data/exports/constituent_cases.csv`.
+- Hosted Vercel fallback: cases can live in a private GitHub CSV file so rebuilds, refreshes, and server restarts do not erase them.
+
+For hosted persistence, create a private GitHub repository or use an existing private data repository, then add these Vercel environment variables:
+
+```env
+WARDOS_CASE_LOG_REPO=jameshward3/your-private-data-repo
+WARDOS_CASE_LOG_TOKEN=github-token-with-contents-read-write
+WARDOS_CASE_LOG_BRANCH=main
+WARDOS_CASE_LOG_PATH=data/constituent_cases.csv
+```
+
+The token only needs repository contents read/write access for the private case-log repository. Do not commit the token or case CSV into this frontend repo.
+
+After those variables are set, new constituent needs submitted through WardOS are written to the GitHub CSV log and remain available between Vercel builds. If these variables are missing, the hosted fallback uses temporary storage and case entries may disappear after a rebuild.
+
+Download the Excel-readable hosted case log while signed in:
+
+```text
+https://wardos.jw4o.com/api/cases/export.csv
+```
 
 ## Google Workspace Login
 
@@ -125,6 +155,10 @@ WARDOS_API_URL=https://your-reachable-wardos-api.example.com
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
+WARDOS_CASE_LOG_REPO=jameshward3/your-private-data-repo
+WARDOS_CASE_LOG_TOKEN=github-token-with-contents-read-write
+WARDOS_CASE_LOG_BRANCH=main
+WARDOS_CASE_LOG_PATH=data/constituent_cases.csv
 ```
 
 7. Deploy the project.

@@ -19,6 +19,20 @@ type Store = {
 };
 
 const STORE_PATH = path.join("/tmp", "wardos-hosted-api-store.json");
+const CASE_FIELDS = [
+  "id",
+  "created_at",
+  "constituent_name",
+  "address_line",
+  "phone",
+  "email",
+  "topic",
+  "status",
+  "priority",
+  "notes",
+  "latitude",
+  "longitude",
+] as const;
 
 function emptyStore(): Store {
   return {
@@ -44,6 +58,118 @@ async function readStore(): Promise<Store> {
 
 async function writeStore(store: Store) {
   await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function casesToCsv(rows: StoredRow[], includeBom = false) {
+  const csv = [
+    CASE_FIELDS.join(","),
+    ...rows.map((row) => CASE_FIELDS.map((field) => csvEscape(row[field])).join(",")),
+  ].join("\n");
+  return includeBom ? `\uFEFF${csv}` : csv;
+}
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  values.push(current);
+  return values;
+}
+
+function csvToCases(csv: string): StoredRow[] {
+  const lines = csv.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0].replace(/^\uFEFF/, ""));
+  return lines.slice(1).map((line, index) => {
+    const values = parseCsvLine(line);
+    const row: Record<string, unknown> = {};
+    headers.forEach((header, headerIndex) => {
+      row[header] = values[headerIndex] || "";
+    });
+    const id = Number(row.id) || index + 1;
+    return { ...row, id, created_at: String(row.created_at || "") };
+  });
+}
+
+function githubCaseStorageConfig() {
+  const repo = process.env.WARDOS_CASE_LOG_REPO?.trim();
+  const token = process.env.WARDOS_CASE_LOG_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  const branch = process.env.WARDOS_CASE_LOG_BRANCH?.trim() || "main";
+  const filePath = process.env.WARDOS_CASE_LOG_PATH?.trim() || "data/constituent_cases.csv";
+  if (!repo || !token) return null;
+  return { repo, token, branch, filePath };
+}
+
+async function readGithubCases(): Promise<{ rows: StoredRow[]; sha?: string } | null> {
+  const config = githubCaseStorageConfig();
+  if (!config) return null;
+  const url = `https://api.github.com/repos/${config.repo}/contents/${encodeURIComponent(config.filePath).replace(/%2F/g, "/")}?ref=${encodeURIComponent(config.branch)}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "WardOS",
+    },
+    cache: "no-store",
+  });
+  if (response.status === 404) return { rows: [] };
+  if (!response.ok) throw new Error(`GitHub case log read failed: ${response.status}`);
+  const data = (await response.json()) as { content?: string; sha?: string };
+  const content = Buffer.from(String(data.content || ""), "base64").toString("utf8");
+  return { rows: csvToCases(content), sha: data.sha };
+}
+
+async function writeGithubCases(rows: StoredRow[], sha?: string) {
+  const config = githubCaseStorageConfig();
+  if (!config) return false;
+  const url = `https://api.github.com/repos/${config.repo}/contents/${encodeURIComponent(config.filePath).replace(/%2F/g, "/")}`;
+  const body: Record<string, unknown> = {
+    message: "Update WardOS constituent case log",
+    content: Buffer.from(casesToCsv(rows), "utf8").toString("base64"),
+    branch: config.branch,
+  };
+  if (sha) body.sha = sha;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "WardOS",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`GitHub case log write failed: ${response.status}`);
+  return true;
+}
+
+async function loadCases(store: Store) {
+  const github = await readGithubCases();
+  if (!github) return { rows: store.cases, sha: undefined, persistent: false };
+  store.cases = github.rows;
+  store.nextId = Math.max(store.nextId, ...github.rows.map((row) => Number(row.id) + 1), 1);
+  return { rows: github.rows, sha: github.sha, persistent: true };
 }
 
 function json(data: unknown, status = 200) {
@@ -100,10 +226,22 @@ function dashboardOverview(store: Store) {
 export async function GET(_request: NextRequest, context: { params: { path?: string[] } }) {
   const route = normalizePath(context.params);
   const store = await readStore();
+  if (route === "/dashboard/overview" || route === "/cases" || route === "/cases/export.csv") {
+    await loadCases(store);
+  }
 
   if (route === "/health") return json({ ok: true, mode: "hosted-fallback" });
   if (route === "/dashboard/overview") return json(dashboardOverview(store));
   if (route === "/cases") return json([...store.cases].reverse());
+  if (route === "/cases/export.csv") {
+    return new NextResponse(casesToCsv([...store.cases].reverse(), true), {
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": 'attachment; filename="wardos_constituent_cases.csv"',
+      },
+    });
+  }
   if (route === "/legislation") return json([...store.legislation].reverse());
   if (route === "/budget-watch") return json([...store.budgetWatch].reverse());
   if (route === "/office-actions") return json([...store.officeActions].reverse());
@@ -137,8 +275,12 @@ export async function POST(request: NextRequest, context: { params: { path?: str
   let row: StoredRow | null = null;
 
   if (route === "/cases") {
+    const existingCases = await loadCases(store);
     row = createRow(store, { status: "open", priority: "normal", ...payload });
     store.cases.push(row);
+    if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
+    await writeStore(store);
+    return json({ id: row.id, status: "created", persistent: existingCases.persistent }, 201);
   } else if (route === "/legislation") {
     row = createRow(store, { status: "tracking", ...payload });
     store.legislation.push(row);
