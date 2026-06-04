@@ -244,6 +244,31 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
   }
   if (route === "/legislation") return json([...store.legislation].reverse());
   if (route === "/budget-watch") return json([...store.budgetWatch].reverse());
+  if (route === "/development-projects") return json([]);
+  if (route === "/development-watch") {
+    return json({
+      source_url: "Orange Township Planning and Zoning Board pages",
+      fetched_at: null,
+      boards: [
+        {
+          board: "Planning Board",
+          source_url: "https://orangetwpnjcc.org/boards-commissions/planning-board/",
+          meeting_count: 0,
+          watch_count: 0,
+        },
+        {
+          board: "Zoning Board of Adjustment",
+          source_url: "https://orangetwpnjcc.org/boards-commissions/zoning-board-of-adjustment/",
+          meeting_count: 0,
+          watch_count: 0,
+        },
+      ],
+      meeting_count: 0,
+      watch_count: 0,
+      meetings: [],
+      watch_items: [],
+    });
+  }
   if (route === "/office-actions") return json([...store.officeActions].reverse());
   if (route === "/media-mentions") return json([...store.mediaMentions].reverse());
   if (route === "/source-connections") return json([...store.sourceConnections].reverse());

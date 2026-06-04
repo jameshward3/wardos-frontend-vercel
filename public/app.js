@@ -35,6 +35,7 @@ const state = {
   priorityIssues: [],
   meetings: [],
   developments: [],
+  developmentWatch: null,
   officeActions: [],
   weather: null,
   mediaFilters: {
@@ -170,6 +171,18 @@ function officeDateLine(includeTime = false) {
   return `${date} · ${time}`;
 }
 
+function formatShortDate(value) {
+  if (!value) return "Not set";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/New_York",
+  }).format(parsed);
+}
+
 function h(strings, ...values) {
   return strings.reduce((acc, part, index) => acc + part + (values[index] ?? ""), "");
 }
@@ -238,6 +251,8 @@ async function loadData() {
   state.priorityIssues = state.dashboardOverview.priority_issues || [];
   state.meetings = state.dashboardOverview.meetings || [];
   state.developments = state.dashboardOverview.developments || [];
+  state.developmentWatch = await getJson("/development-watch", state.developmentWatch || developmentWatchFallback());
+  state.developments = await getJson("/development-projects", state.developments);
   state.officeActions = state.dashboardOverview.actions || [];
   state.officeActions = await getJson("/office-actions", state.officeActions);
   state.drafts = state.officeActions.filter((action) => ["draft_follow_up", "note"].includes(action.action_type));
@@ -253,6 +268,21 @@ async function loadData() {
   if (state.mediaStories.length) state.selectedStoryId = String(state.mediaStories[0].id);
   state.weather = await getJson("/weather/today", weatherFallback());
   render();
+}
+
+function developmentWatchFallback() {
+  return {
+    source_url: "Orange Township Planning and Zoning Board pages",
+    fetched_at: null,
+    boards: [
+      { board: "Planning Board", source_url: "https://orangetwpnjcc.org/boards-commissions/planning-board/", meeting_count: 0, watch_count: 0 },
+      { board: "Zoning Board of Adjustment", source_url: "https://orangetwpnjcc.org/boards-commissions/zoning-board-of-adjustment/", meeting_count: 0, watch_count: 0 },
+    ],
+    meeting_count: 0,
+    watch_count: 0,
+    meetings: [],
+    watch_items: [],
+  };
 }
 
 function operationalOverviewFallback() {
@@ -516,6 +546,111 @@ function developmentPanel() {
           </div>
         `).join("") || `<div class="empty">No development projects tracked yet.</div>`}
       </div>
+    </section>
+  `;
+}
+
+function boardDocumentRows(meetings) {
+  const docs = meetings.flatMap((meeting) =>
+    (meeting.documents || []).map((document) => ({ ...document, board: meeting.board, date: meeting.date, meetingTitle: meeting.title }))
+  );
+  if (!docs.length) return `<div class="empty">No agenda, notice, application, or minute links have been collected yet. Run sync after the board pages update.</div>`;
+  return docs.slice(0, 80).map((document) => h`
+    <article class="mini-card">
+      <div>
+        <strong>${document.title}</strong>
+        <p class="muted">${document.board} · ${document.date || "No date"} · ${titleCase(document.document_type || "source")}</p>
+      </div>
+      <div class="stack-right">
+        <span class="status ${String(document.document_type).includes("agenda") ? "info" : String(document.document_type).includes("application") ? "warn" : ""}">${document.document_type || "source"}</span>
+        <a class="link" href="${document.url}" target="_blank" rel="noopener noreferrer">Open details ↗</a>
+      </div>
+    </article>
+  `).join("");
+}
+
+function developmentPage() {
+  const watch = state.developmentWatch || developmentWatchFallback();
+  const meetings = filterRows(watch.meetings || [], ["title", "board", "location", "status"]);
+  const watchItems = filterRows([...(watch.watch_items || []), ...(state.developments || [])], ["name", "address", "project_type", "board", "status"]);
+  const sourceRows = watch.boards?.length ? watch.boards : developmentWatchFallback().boards;
+  return h`
+    <div class="page-head">
+      <div class="headline">
+        <div class="sun-card">▥</div>
+        <div>
+          <h1>Development Watchdog</h1>
+          <p class="muted">Planning Board and Zoning Board agendas, applications, notices, minutes, and redevelopment signals.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="secondary" data-sync-development>Sync Board Sources</button>
+        <button class="primary" data-open-modal="note">Create Follow-up</button>
+      </div>
+    </div>
+    <section class="cards">
+      ${metric(watch.meeting_count || meetings.length, "Board Meetings", "From official sources", "blue")}
+      ${metric(watch.watch_count || watchItems.length, "Watch Items", "Applications & notices", "purple")}
+      ${metric(boardDocumentRows(watch.meetings || []).includes("mini-card") ? (watch.meetings || []).reduce((sum, row) => sum + (row.documents || []).length, 0) : 0, "Linked Records", "Clickable details", "cyan")}
+      ${metric(sourceRows.length, "Sources", "Planning + zoning", "orange")}
+    </section>
+    <section class="grid dashboard-grid">
+      <section class="panel">
+        <div class="panel-header"><h2>Official Board Sources</h2><span class="muted">Last sync: ${watch.fetched_at ? formatShortDate(watch.fetched_at) : "Not synced"}</span></div>
+        <div class="panel-body list-stack">
+          ${sourceRows.map((source) => h`
+            <article class="mini-card">
+              <div>
+                <strong>${source.board}</strong>
+                <p class="muted">${source.meeting_count || 0} meetings · ${source.watch_count || 0} watch records</p>
+              </div>
+              <a class="link" href="${source.source_url}" target="_blank" rel="noopener noreferrer">Open source ↗</a>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Development Watch Items</h2><button class="link" data-open-modal="note">Add note</button></div>
+        <div class="panel-body list-stack">
+          ${watchItems.slice(0, 20).map((item) => h`
+            <article class="mini-card">
+              <div>
+                <strong>${item.name}</strong>
+                <p class="muted">${item.address || "Address not listed"} · ${item.board || "Board source"} · ${titleCase(item.project_type || "tracking")}</p>
+              </div>
+              <div class="stack-right">
+                <span class="status ${String(item.project_type).includes("application") ? "warn" : "info"}">${item.status || "tracking"}</span>
+                ${item.source_url ? `<a class="link" href="${item.source_url}" target="_blank" rel="noopener noreferrer">Open record ↗</a>` : ""}
+              </div>
+            </article>
+          `).join("") || `<div class="empty">No development watch items yet. Sync the board sources to pull official records.</div>`}
+        </div>
+      </section>
+    </section>
+    <section class="grid dashboard-grid">
+      <section class="panel">
+        <div class="panel-header"><h2>Board Meetings</h2><span class="muted">${meetings.length} itemized</span></div>
+        <div class="panel-body list-stack">
+          ${meetings.slice(0, 30).map((meeting) => h`
+            <article class="mini-card">
+              <div>
+                <strong>${meeting.title}</strong>
+                <p class="muted">${meeting.board} · ${meeting.date || "Date pending"} · ${(meeting.documents || []).length} linked records</p>
+              </div>
+              <div class="stack-right">
+                <span class="status ${meeting.status === "posted" ? "good" : ""}">${meeting.status}</span>
+                <a class="link" href="${meeting.source_url}" target="_blank" rel="noopener noreferrer">Open board page ↗</a>
+              </div>
+            </article>
+          `).join("") || `<div class="empty">No board meetings collected yet.</div>`}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Agendas & Records</h2><span class="muted">Open in a new tab</span></div>
+        <div class="panel-body list-stack">
+          ${boardDocumentRows(watch.meetings || [])}
+        </div>
+      </section>
     </section>
   `;
 }
@@ -1795,7 +1930,7 @@ function renderPage() {
     constituents: constituentsPage,
     legislation: legislationPage,
     budget: budgetPage,
-    development: () => genericPage("Development", "Watch planning, zoning, redevelopment, and construction review items."),
+    development: developmentPage,
     projects: () => genericPage("Projects & DPW", "Track field work, DPW handoffs, service requests, and project follow-ups."),
     maps: () => genericPage("Maps", "Spatial view for issues, cases, developments, and service patterns."),
     reports: () => genericPage("Reports", "Build ward reports, staff summaries, and briefing packets from local data."),
@@ -1924,6 +2059,13 @@ function bindEvents() {
     await postJson("/staff/import-users", {}).catch(() => null);
     state.staffUsers = await getJson("/staff/users", state.staffUsers);
     state.staffRoles = await getJson("/staff/roles", state.staffRoles);
+    render();
+  });
+  document.querySelector("[data-sync-development]")?.addEventListener("click", async () => {
+    await postJson("/development-watch/sync", {}).catch(showSaveError);
+    state.developmentWatch = await getJson("/development-watch", state.developmentWatch || developmentWatchFallback());
+    state.developments = await getJson("/development-projects", state.developments);
+    state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
     render();
   });
 }
