@@ -19,6 +19,81 @@ type Store = {
 };
 
 const STORE_PATH = path.join("/tmp", "wardos-hosted-api-store.json");
+const SEEDED_MEDIA_SOURCES = [
+  {
+    id: 1,
+    name: "Orange NJ Real Talk",
+    source_type: "facebook_group",
+    url: "https://www.facebook.com/groups/OrangeNJRealTalk/",
+    enabled: false,
+    status: "needs_credentials",
+    notes: JSON.stringify({ priority: "critical", category: "community", authentication_required: true }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+  {
+    id: 2,
+    name: "Seven Oaks Society",
+    source_type: "facebook_page",
+    url: "https://www.facebook.com/sevenoakssociety/",
+    enabled: false,
+    status: "needs_credentials",
+    notes: JSON.stringify({ priority: "high", category: "community", authentication_required: true }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+  {
+    id: 3,
+    name: "Essex News Daily",
+    source_type: "news",
+    url: "https://essexnewsdaily.com/feed",
+    enabled: true,
+    status: "configured",
+    notes: JSON.stringify({ priority: "critical", category: "orange,east_orange,essex_county", source_url: "https://essexnewsdaily.com" }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+  {
+    id: 4,
+    name: "NJ.com",
+    source_type: "news",
+    url: "https://www.nj.com/",
+    enabled: true,
+    status: "configured",
+    notes: JSON.stringify({ priority: "high", category: "new_jersey,essex_county,orange" }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+  {
+    id: 5,
+    name: "NJ.com Essex County",
+    source_type: "news",
+    url: "https://www.nj.com/essex",
+    enabled: true,
+    status: "configured",
+    notes: JSON.stringify({ priority: "critical", category: "essex_county" }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+  {
+    id: 6,
+    name: "Essex Review",
+    source_type: "news",
+    url: "https://essexreview.com/",
+    enabled: true,
+    status: "configured",
+    notes: JSON.stringify({ priority: "critical", category: "orange,essex_county" }),
+    created_at: "2026-06-03T00:00:00.000Z",
+  },
+];
+const SEEDED_MEDIA_CONFIG = {
+  local_news: [
+    { name: "Essex News Daily", type: "news", priority: "critical", url: "https://essexnewsdaily.com/", rss: "https://essexnewsdaily.com/feed" },
+    { name: "NJ.com", type: "news", priority: "high", url: "https://www.nj.com/" },
+    { name: "NJ.com Essex County", type: "news", priority: "critical", url: "https://www.nj.com/essex" },
+    { name: "Essex Review", type: "news", priority: "critical", url: "https://essexreview.com/" },
+  ],
+  community: [
+    { name: "Orange NJ Real Talk", type: "facebook_group", priority: "critical", url: "https://www.facebook.com/groups/OrangeNJRealTalk/", authentication_required: true },
+    { name: "Seven Oaks Society", type: "facebook_page", priority: "high", url: "https://www.facebook.com/sevenoakssociety/", authentication_required: true },
+  ],
+  intelligence_topics: ["Taxes", "Budget", "Redevelopment", "PILOT Agreements", "Public Safety", "Traffic", "Trees", "Parking", "Development", "Schools"],
+};
 const CASE_FIELDS = [
   "id",
   "created_at",
@@ -271,7 +346,7 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
   }
   if (route === "/office-actions") return json([...store.officeActions].reverse());
   if (route === "/media-mentions") return json([...store.mediaMentions].reverse());
-  if (route === "/source-connections") return json([...store.sourceConnections].reverse());
+  if (route === "/source-connections") return json(store.sourceConnections.length ? [...store.sourceConnections].reverse() : SEEDED_MEDIA_SOURCES);
   if (route === "/staff/users") return json([...store.staffUsers].reverse());
   if (route === "/staff/roles") return json({ admin: "Administrator", strategy_advisor: "Strategy Advisor" });
   if (route === "/constituents") return json([]);
@@ -279,7 +354,7 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
     return json({ total: 0, by_status: {}, by_subgroup: {}, by_ward: {}, mailin_may_2026: 0, received: 0, outstanding: 0 });
   }
   if (route === "/media-monitor") return json({ mentions: store.mediaMentions.length, topics: [], stories: store.mediaMentions, alerts: [], actions: [] });
-  if (route === "/media-monitor/config") return json(null);
+  if (route === "/media-monitor/config") return json(SEEDED_MEDIA_CONFIG);
   if (route === "/weather/today") {
     return json({ ok: true, location: "Orange, NJ", temperature: 62, high: 74, low: 52, condition: "Sunny", symbol: "☀" });
   }
@@ -324,6 +399,10 @@ export async function POST(request: NextRequest, context: { params: { path?: str
   } else if (route === "/staff/import-users") {
     await writeStore(store);
     return json({ imported: 0, updated: 0, status: "complete" });
+  } else if (route === "/media-monitor/import-sources") {
+    if (!store.sourceConnections.length) store.sourceConnections.push(...SEEDED_MEDIA_SOURCES);
+    await writeStore(store);
+    return json({ imported: store.sourceConnections.length, skipped: 0, status: "complete" });
   } else if (route.endsWith("/sync") || route.endsWith("/import-sources")) {
     await writeStore(store);
     return json({ status: "queued", imported: 0, updated: 0 });
