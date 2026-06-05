@@ -32,6 +32,12 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
           </div>
         </div>
 
+        <button className="mobile-nav-toggle" id="mobileNavToggle" type="button" aria-expanded="false" aria-controls="nav">
+          <span />
+          <span />
+          <span />
+        </button>
+
         <nav id="nav" />
 
         <section className="assistant-card">
@@ -95,7 +101,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js" strategy="afterInteractive" />
+      <Script src="/app.js?v=mobile-nav-20260605" strategy="afterInteractive" />
     </>
   );
 }

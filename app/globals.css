@@ -86,6 +86,27 @@ button {
   color: var(--muted);
 }
 
+.mobile-nav-toggle {
+  display: none;
+  width: 46px;
+  height: 42px;
+  place-items: center;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(17, 32, 49, 0.88);
+  color: var(--text);
+}
+
+.mobile-nav-toggle span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 nav {
   display: grid;
   gap: 6px;
@@ -1832,17 +1853,59 @@ h3 {
 
 @media (max-width: 1180px) {
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 40;
     width: auto;
     min-height: auto;
+    padding: 16px 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    gap: 0;
   }
 
   .shell {
     margin-left: 0;
   }
 
-  nav {
+  .brand {
+    padding: 0;
+    padding-right: 62px;
+  }
+
+  .brand strong {
+    font-size: 28px;
+  }
+
+  .mobile-nav-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: grid;
+  }
+
+  .sidebar nav,
+  .sidebar .assistant-card,
+  .sidebar .quick-add {
+    display: none;
+  }
+
+  .sidebar.mobile-nav-open {
+    gap: 16px;
+  }
+
+  .sidebar.mobile-nav-open nav {
+    display: grid;
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .sidebar.mobile-nav-open .assistant-card {
+    display: grid;
+    margin-top: 0;
+  }
+
+  .sidebar.mobile-nav-open .quick-add {
+    display: flex;
   }
 
   .metrics,
@@ -1883,7 +1946,7 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  nav,
+  .sidebar.mobile-nav-open nav,
   .metrics,
   .action-grid,
   .ai-brief-grid {

@@ -464,6 +464,15 @@ function renderNav() {
     .join("");
 }
 
+function setMobileNav(open) {
+  const sidebar = document.querySelector(".sidebar");
+  const toggle = document.getElementById("mobileNavToggle");
+  if (!sidebar || !toggle) return;
+  sidebar.classList.toggle("mobile-nav-open", open);
+  toggle.setAttribute("aria-expanded", String(open));
+  toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+}
+
 function navCountFor(key) {
   const metrics = state.dashboardOverview?.metrics;
   if (!metrics) return "";
@@ -2168,9 +2177,16 @@ function render() {
 }
 
 function bindEvents() {
+  const mobileNavToggle = document.getElementById("mobileNavToggle");
+  if (mobileNavToggle) mobileNavToggle.onclick = () => {
+    const isOpen = document.querySelector(".sidebar")?.classList.contains("mobile-nav-open");
+    setMobileNav(!isOpen);
+  };
+
   document.querySelectorAll("[data-page]").forEach((button) => {
     button.addEventListener("click", () => {
       state.page = button.dataset.page;
+      setMobileNav(false);
       render();
     });
   });
