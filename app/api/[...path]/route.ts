@@ -669,11 +669,15 @@ function categoryLabel(category: unknown) {
 }
 
 function publicSafetyDashboard(store: Store) {
-  const incidents = (store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS).map((row) => ({
-    ...row,
-    category_label: row.category_label || categoryLabel(row.category),
+  const sourceRows = store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS;
+  const incidents = sourceRows.map((sourceRow) => {
+    const row = sourceRow as Record<string, unknown>;
+    return {
+      ...row,
+      category_label: row.category_label || categoryLabel(row.category),
+    };
   }));
-  const count = (category: string) => incidents.filter((row) => row.category === category).length;
+  const count = (category: string) => incidents.filter((row) => String(row.category || "") === category).length;
   const resolved = incidents.filter((row) => String(row.status || "").toLowerCase() === "resolved" || String(row.status || "").toLowerCase() === "closed").length;
   const locationCounts = new Map<string, number>();
   incidents.forEach((row) => {
