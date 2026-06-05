@@ -109,6 +109,189 @@ const CASE_FIELDS = [
   "longitude",
 ] as const;
 
+const CONSTITUENT_SUMMARY = {
+  total: 638,
+  by_status: { Received: 252, Outstanding: 386 },
+  by_subgroup: { "May 2026 Mail-In Voters": 638 },
+  by_ward: { South: 638 },
+  mailin_may_2026: 638,
+  received: 252,
+  outstanding: 386,
+  average_days_to_return: 29.6,
+};
+
+const SEEDED_STAFF_USERS = [
+  {
+    id: 1,
+    full_name: "James Ward",
+    email: "james@jameswardfororange.com",
+    role: "admin",
+    title: "Councilman",
+    is_active: true,
+    notes: "Primary WardOS administrator.",
+    created_at: "2026-06-04T00:00:00.000Z",
+  },
+  {
+    id: 2,
+    full_name: "Jamar Young",
+    email: "Manager@jameswardfororange.com",
+    role: "strategy_advisor",
+    title: "Strategy Advisor",
+    is_active: true,
+    notes: "Strategy advisor for office planning and follow-up coordination.",
+    created_at: "2026-06-04T00:00:00.000Z",
+  },
+];
+
+const SEEDED_MEETINGS = [
+  {
+    id: 148,
+    title: "Zoning Board of Adjustment Meeting - June 09, 2026",
+    starts_at: "2026-06-09T00:00:00",
+    location: "Orange Zoning Board of Adjustment",
+    status: "scheduled",
+    event_type: "meeting",
+  },
+  {
+    id: 171,
+    title: "City of Orange Township - ABC Board Meeting",
+    starts_at: "2026-06-11T18:00:00",
+    location: "Virtual meeting",
+    status: "posted",
+    event_type: "meeting",
+  },
+  {
+    id: 149,
+    title: "Planning Board Meeting - June 17, 2026",
+    starts_at: "2026-06-17T00:00:00",
+    location: "Orange Planning Board",
+    status: "scheduled",
+    event_type: "meeting",
+  },
+  {
+    id: 150,
+    title: "Zoning Board of Adjustment Meeting - June 18, 2026",
+    starts_at: "2026-06-18T00:00:00",
+    location: "Orange Zoning Board of Adjustment",
+    status: "scheduled",
+    event_type: "meeting",
+  },
+];
+
+const SEEDED_DEVELOPMENTS = [
+  {
+    id: 87,
+    name: "ZBA Application JW26-001 - 434 Parkinson Terrace",
+    address: "434 Parkinson Terrace",
+    project_type: "application",
+    status: "source posted",
+    board: "Zoning Board of Adjustment",
+    source_url: "https://orangetwpnjcc.org/wp-content/uploads/2026/05/ZBA-APP-JW26-001-434-Parkinson-Terrace-1-1.pdf",
+  },
+  {
+    id: 86,
+    name: "Public Notice",
+    address: "391 Lakeside Avenue",
+    project_type: "notice",
+    status: "source posted",
+    board: "Zoning Board of Adjustment",
+    source_url: "https://orangetwpnjcc.org/wp-content/uploads/2025/11/11.18.2025-ZB-Public-Notice-rev.pdf",
+  },
+  {
+    id: 83,
+    name: "MW24-005 124-128 Ward St. App Survey Plans",
+    address: "124-128 Ward Street",
+    project_type: "redevelopment",
+    status: "source posted",
+    board: "Zoning Board of Adjustment",
+    source_url: "https://acrobat.adobe.com/id/urn:aaid:sc:VA6C2:096654fd-cb7f-47b6-b726-2287be7a4ee2",
+  },
+  {
+    id: 79,
+    name: "220 N Center Street Application",
+    address: "220 N Center Street",
+    project_type: "application",
+    status: "source posted",
+    board: "Zoning Board of Adjustment",
+    source_url: "https://orangetwpnjcc.org/wp-content/uploads/2023/05/220-N-Center-Street-Application_.pdf",
+  },
+  {
+    id: 70,
+    name: "47 Hillyer Street Public Notice",
+    address: "47 Hillyer Street",
+    project_type: "notice",
+    status: "source posted",
+    board: "Zoning Board of Adjustment",
+    source_url: "https://orangetwpnjcc.org/wp-content/uploads/2024/05/6-3-2024-ZB-Public-Notice.pdf",
+  },
+];
+
+const SEEDED_MEDIA_MENTIONS = [
+  {
+    id: 1,
+    source: "Essex News Daily",
+    source_type: "news",
+    headline: "Top seed Seton Hall Prep lacrosse team advances to state quarterfinals",
+    summary: "Local Essex County sports coverage collected by the WardOS media monitor.",
+    url: "https://essexnewsdaily.com/sports/sports-westorange/top-seed-seton-hall-prep-lacrosse-team-advances-to-state-quarterfinals/",
+    sentiment: "neutral",
+    topic: "Community",
+    geographic_tag: "Orange / Essex County",
+    engagement_score: 0,
+    published_at: "2026-06-04T15:55:35",
+    created_at: "2026-06-04T15:55:35",
+  },
+  {
+    id: 2,
+    source: "Essex News Daily",
+    source_type: "news",
+    headline: "West Orange HS girls flag football team moves to 14-1, reaches South final",
+    summary: "School and community sports mention collected from the configured local news feed.",
+    url: "https://essexnewsdaily.com/sports/sports-westorange/west-orange-hs-girls-flag-football-team-moves-to-14-1-reaches-south-final/",
+    sentiment: "neutral",
+    topic: "Schools",
+    geographic_tag: "Orange / Essex County",
+    engagement_score: 0,
+    published_at: "2026-06-04T15:20:49",
+    created_at: "2026-06-04T15:20:49",
+  },
+  {
+    id: 3,
+    source: "Essex News Daily",
+    source_type: "news",
+    headline: "Columbia HS boys tennis team reaches sectional final",
+    summary: "Regional school sports mention collected from the configured local news feed.",
+    url: "https://essexnewsdaily.com/sports/sports-southorange/columbia-hs-boys-tennis-team-reaches-sectional-final/",
+    sentiment: "neutral",
+    topic: "Schools",
+    geographic_tag: "Orange / Essex County",
+    engagement_score: 0,
+    published_at: "2026-06-04T14:29:08",
+    created_at: "2026-06-04T14:29:08",
+  },
+];
+
+const GITHUB_SOURCES = {
+  budget: {
+    label: "Orange Budget Dashboard",
+    repo: "jameshward3/OrangeBudgetDashboard",
+    path: "historical_budget_dataset.json",
+    raw_url: "https://raw.githubusercontent.com/jameshward3/OrangeBudgetDashboard/main/historical_budget_dataset.json",
+  },
+  progress: {
+    label: "Personal Progress",
+    repo: "jameshward3/Progress",
+    path: "metrics.json",
+    raw_url: "https://raw.githubusercontent.com/jameshward3/Progress/main/metrics.json",
+  },
+  legislation: {
+    label: "Legislative Tracker",
+    repo: "jameshward3/Legislative_tracker",
+    path: "metrics.json",
+    raw_url: "https://raw.githubusercontent.com/jameshward3/Legislative_tracker/main/metrics.json",
+  },
+};
+
 function emptyStore(): Store {
   return {
     nextId: 1,
@@ -119,6 +302,84 @@ function emptyStore(): Store {
     mediaMentions: [],
     sourceConnections: [],
     staffUsers: [],
+  };
+}
+
+async function fetchGithubSource(name: keyof typeof GITHUB_SOURCES) {
+  const source = GITHUB_SOURCES[name];
+  try {
+    const response = await fetch(source.raw_url, {
+      headers: { Accept: "application/vnd.github.raw+json", "User-Agent": "WardOS" },
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+    return { ok: true, from_cache: false, fetched_at: new Date().toISOString(), source, data: await response.json() };
+  } catch (error) {
+    return { ok: false, from_cache: false, fetched_at: new Date().toISOString(), source, error: error instanceof Error ? error.message : String(error), data: null };
+  }
+}
+
+function normalizeBudget(envelope: Record<string, unknown>) {
+  const rows = Array.isArray(envelope.data) ? [...envelope.data] as Array<Record<string, number | string>> : [];
+  rows.sort((a, b) => Number(a.year || 0) - Number(b.year || 0));
+  const latest = rows[rows.length - 1] || {};
+  const previous = rows[rows.length - 2] || {};
+  const growth = (key: string) => {
+    const current = Number(latest[key] || 0);
+    const prior = Number(previous[key] || 0);
+    return prior ? Math.round(((current - prior) / prior) * 10000) / 100 : null;
+  };
+  return {
+    ...envelope,
+    summary: {
+      latest_year: latest.year || null,
+      total_budget: latest.totalBudget || null,
+      tax_levy: latest.taxLevy || null,
+      non_tax_revenue: latest.nonTaxRevenue || null,
+      surplus: latest.surplus || null,
+      debt_service: latest.debtService || null,
+      budget_growth_percent: growth("totalBudget"),
+      tax_levy_growth_percent: growth("taxLevy"),
+      years_tracked: rows.length,
+    },
+    rows,
+  };
+}
+
+function normalizeProgress(envelope: Record<string, unknown>) {
+  const data = (envelope.data || {}) as { summary?: Record<string, unknown>; commitments?: Array<Record<string, unknown>> };
+  const items = Array.isArray(data.commitments) ? data.commitments : [];
+  const progressValues = items.map((item) => Number(item.progress || 0)).filter((value) => Number.isFinite(value));
+  const average = progressValues.length ? Math.round((progressValues.reduce((sum, value) => sum + value, 0) / progressValues.length) * 10) / 10 : 0;
+  return {
+    ...envelope,
+    summary: {
+      ...(data.summary || {}),
+      average_progress: average,
+      items_tracked: items.length,
+      in_progress: items.filter((item) => String(item.status || "").toLowerCase() === "in progress").length,
+      completed: items.filter((item) => String(item.status || "").toLowerCase() === "completed").length,
+    },
+    items,
+  };
+}
+
+function normalizeLegislation(envelope: Record<string, unknown>) {
+  const data = (envelope.data || {}) as { summary?: Record<string, unknown>; items?: Array<Record<string, unknown>>; legislation?: Array<Record<string, unknown>>; commitments?: Array<Record<string, unknown>> };
+  if (Array.isArray(data.commitments) && String(data.summary?.title || "").toLowerCase().includes("first 100 days")) {
+    return {
+      ...envelope,
+      ok: false,
+      data_quality: "Legislative_tracker currently contains progress metrics, not legislation records.",
+      summary: { title: "Legislative Tracker", items_tracked: 0, in_progress: 0, completed: 0 },
+      items: [],
+    };
+  }
+  const items = Array.isArray(data.items) ? data.items : Array.isArray(data.legislation) ? data.legislation : [];
+  return {
+    ...envelope,
+    summary: { ...(data.summary || {}), items_tracked: items.length },
+    items,
   };
 }
 
@@ -273,16 +534,17 @@ function createRow(store: Store, payload: Record<string, unknown>) {
 
 function dashboardOverview(store: Store) {
   const openCases = store.cases.filter((row) => row.status !== "closed");
+  const seededMedia = store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS;
   return {
     sample_mode: false,
     metrics: {
       open_requests: openCases.length,
-      constituents: 0,
-      mailin_voters: 0,
-      council_meetings: 0,
+      constituents: CONSTITUENT_SUMMARY.total,
+      mailin_voters: CONSTITUENT_SUMMARY.mailin_may_2026,
+      council_meetings: 171,
       pending_legislation: store.legislation.length,
-      development_projects: 0,
-      media_mentions: store.mediaMentions.length,
+      development_projects: 87,
+      media_mentions: seededMedia.length,
     },
     priority_issues: openCases.slice(-5).reverse().map((row) => ({
       id: row.id,
@@ -292,8 +554,8 @@ function dashboardOverview(store: Store) {
       priority: row.priority || "normal",
       created_at: row.created_at,
     })),
-    meetings: [],
-    developments: [],
+    meetings: SEEDED_MEETINGS,
+    developments: SEEDED_DEVELOPMENTS,
     actions: store.officeActions.slice(-8).reverse(),
   };
 }
@@ -306,6 +568,27 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
   }
 
   if (route === "/health") return json({ ok: true, mode: "hosted-fallback" });
+  if (route === "/system/status") {
+    return json({
+      ok: true,
+      timezone: "America/New_York",
+      sample_mode: false,
+      database: {
+        connected: true,
+        constituents: CONSTITUENT_SUMMARY.total,
+        cases: store.cases.length,
+        legislation: store.legislation.length,
+        budget_watch: store.budgetWatch.length,
+        events: 171,
+        development_projects: 87,
+        media_mentions: (store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS).length,
+        city_bulletins: 8,
+        staff_users: (store.staffUsers.length ? store.staffUsers : SEEDED_STAFF_USERS).length,
+      },
+      safety: { local_first: true, auto_send_email: false, auto_publish: false, staff_review_required: true },
+      integrations: { github: "public_read_only", media_sources: (store.sourceConnections.length ? store.sourceConnections : SEEDED_MEDIA_SOURCES).length },
+    });
+  }
   if (route === "/dashboard/overview") return json(dashboardOverview(store));
   if (route === "/cases") return json([...store.cases].reverse());
   if (route === "/cases/export.csv") {
@@ -319,50 +602,93 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
   }
   if (route === "/legislation") return json([...store.legislation].reverse());
   if (route === "/budget-watch") return json([...store.budgetWatch].reverse());
-  if (route === "/development-projects") return json([]);
+  if (route === "/development-projects") return json(SEEDED_DEVELOPMENTS);
   if (route === "/development-watch") {
     return json({
       source_url: "Orange Township Planning and Zoning Board pages",
-      fetched_at: null,
+      fetched_at: "2026-06-04T22:10:50.933485-04:00",
       boards: [
         {
           board: "Planning Board",
           source_url: "https://orangetwpnjcc.org/boards-commissions/planning-board/",
-          meeting_count: 0,
-          watch_count: 0,
+          meeting_count: 76,
+          watch_count: 36,
         },
         {
           board: "Zoning Board of Adjustment",
           source_url: "https://orangetwpnjcc.org/boards-commissions/zoning-board-of-adjustment/",
-          meeting_count: 0,
-          watch_count: 0,
+          meeting_count: 83,
+          watch_count: 51,
         },
       ],
-      meeting_count: 0,
-      watch_count: 0,
-      meetings: [],
-      watch_items: [],
+      meeting_count: 159,
+      watch_count: 87,
+      meetings: SEEDED_MEETINGS.map((meeting) => ({
+        source_id: `hosted-${meeting.id}`,
+        date: String(meeting.starts_at).slice(0, 10),
+        title: meeting.title,
+        board: meeting.location,
+        location: meeting.location,
+        status: meeting.status,
+        source_url: meeting.location.includes("Planning") ? "https://orangetwpnjcc.org/boards-commissions/planning-board/" : "https://orangetwpnjcc.org/boards-commissions/zoning-board-of-adjustment/",
+        documents: [],
+      })),
+      watch_items: SEEDED_DEVELOPMENTS,
     });
   }
   if (route === "/office-actions") return json([...store.officeActions].reverse());
-  if (route === "/media-mentions") return json([...store.mediaMentions].reverse());
+  if (route === "/media-mentions") return json(store.mediaMentions.length ? [...store.mediaMentions].reverse() : SEEDED_MEDIA_MENTIONS);
   if (route === "/source-connections") return json(store.sourceConnections.length ? [...store.sourceConnections].reverse() : SEEDED_MEDIA_SOURCES);
-  if (route === "/staff/users") return json([...store.staffUsers].reverse());
+  if (route === "/staff/users") return json(store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS);
   if (route === "/staff/roles") return json({ admin: "Administrator", strategy_advisor: "Strategy Advisor" });
   if (route === "/constituents") return json([]);
   if (route === "/constituents/summary") {
-    return json({ total: 0, by_status: {}, by_subgroup: {}, by_ward: {}, mailin_may_2026: 0, received: 0, outstanding: 0 });
+    return json(CONSTITUENT_SUMMARY);
   }
-  if (route === "/media-monitor") return json({ mentions: store.mediaMentions.length, topics: [], stories: store.mediaMentions, alerts: [], actions: [] });
+  if (route === "/media-monitor") {
+    const stories = store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS;
+    return json({
+      mentions: stories.length,
+      sentiment: "staff_review",
+      topics: [
+        { topic: "Schools", count: 2, label: "Schools", share: 67 },
+        { topic: "Community", count: 1, label: "Community", share: 33 },
+      ],
+      stories,
+      alerts: [],
+      actions: [],
+    });
+  }
   if (route === "/media-monitor/config") return json(SEEDED_MEDIA_CONFIG);
   if (route === "/weather/today") {
     return json({ ok: true, location: "Orange, NJ", temperature: 62, high: 74, low: 52, condition: "Sunny", symbol: "☀" });
   }
   if (route.startsWith("/integrations/github/")) {
-    return json({ ok: true, from_cache: true, summary: {}, items: [], rows: [] });
+    const name = route.replace("/integrations/github/", "") as keyof typeof GITHUB_SOURCES;
+    if (name === "budget") return json(normalizeBudget(await fetchGithubSource("budget")));
+    if (name === "progress") return json(normalizeProgress(await fetchGithubSource("progress")));
+    if (name === "legislation") return json(normalizeLegislation(await fetchGithubSource("legislation")));
+    return json({ ok: false, error: `Unknown GitHub integration: ${name}` }, 404);
   }
-  if (route === "/city-bulletins" || route === "/city-calendar" || route === "/council-meetings") {
-    return json({ source_url: "", fetched_at: null, events: [], bulletins: [], meetings: [] });
+  if (route === "/city-calendar" || route === "/council-meetings") {
+    return json({ source_url: "https://orangenj.gov/Calendar.aspx", fetched_at: "2026-06-04T22:10:52.036746-04:00", events: SEEDED_MEETINGS, meetings: SEEDED_MEETINGS });
+  }
+  if (route === "/city-bulletins") {
+    return json({
+      source_url: "https://orangenj.gov/",
+      fetched_at: "2026-06-04T22:10:50.490748-04:00",
+      bulletin_count: 8,
+      bulletins: [
+        { title: "Community Food Distribution Day", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=551", status: "posted" },
+        { title: "Community Meeting Q&A", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=545", status: "posted" },
+        { title: "MOBILE MAMMOGRAM SCREENING", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=556", status: "posted" },
+        { title: "Police Community Council Meeting", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=527", status: "posted" },
+        { title: "SEASONAL EMERGENCY PREPAREDNESS APR-JUN 2026", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=543", status: "posted" },
+        { title: "Shredding Event 2026", bulletin_type: "civic_alert", url: "https://orangenj.gov/CivicAlerts.aspx?AID=526", status: "posted" },
+        { title: "EMERGENCY ALERT", bulletin_type: "emergency_alert", url: "https://orangenj.gov/AlertCenter.aspx", status: "posted" },
+        { title: "SNAP Recipients - Find Food Sources Near You", bulletin_type: "emergency_alert", url: "https://orangenj.gov/AlertCenter.aspx?AID=SNAP-Recipients-Find-Food-Sources-Near-Y-34", status: "posted" },
+      ],
+    });
   }
 
   return json({ error: `WardOS hosted API route not found: ${route}` }, 404);

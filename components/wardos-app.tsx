@@ -56,7 +56,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
             Home
           </div>
           <div className="top-actions">
-            <span>Last Sync: 6:00 AM</span>
+            <span id="lastSyncLabel">Last Sync: Loading</span>
             <label className="search">
               <span>⌕</span>
               <input id="globalSearch" type="search" placeholder="Search WardOS..." />

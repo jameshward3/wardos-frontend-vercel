@@ -195,6 +195,20 @@ function saveActions() {
   localStorage.setItem("wardosCompletedActions", JSON.stringify(state.completedActions));
 }
 
+function updateLastSyncLabel() {
+  const label = document.getElementById("lastSyncLabel");
+  if (!label) return;
+  const candidates = [
+    state.dashboardOverview?.fetched_at,
+    state.developmentWatch?.fetched_at,
+    state.media?.fetched_at,
+    state.githubBudget?.fetched_at,
+    state.briefing?.date,
+  ].filter(Boolean);
+  const value = candidates[0] ? new Date(candidates[0]) : new Date();
+  label.textContent = `Last Sync: ${value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
 async function getJson(path, fallback) {
   try {
     const response = await fetch(`${API_BASE}${path}`);
@@ -267,6 +281,7 @@ async function loadData() {
   state.mediaStories = normalizeMediaStories(state.media.stories || (await getJson("/media-mentions", [])));
   if (state.mediaStories.length) state.selectedStoryId = String(state.mediaStories[0].id);
   state.weather = await getJson("/weather/today", weatherFallback());
+  updateLastSyncLabel();
   render();
 }
 
@@ -440,12 +455,14 @@ function navCountFor(key) {
 
 function metricCards() {
   const metrics = state.dashboardOverview?.metrics || operationalOverviewFallback().metrics;
+  const budgetSummary = state.githubBudget?.summary || {};
+  const budgetMetric = budgetSummary.total_budget ? compactMoney(budgetSummary.total_budget) : "Needs source";
   return h`
     <section class="grid metrics">
       ${metric(metrics.open_requests || 0, "Open Requests", "Live cases", "green")}
       ${metric(metrics.council_meetings || 0, "Council Meetings", "Scheduled", "blue")}
       ${metric(metrics.pending_legislation || 0, "Pending Legislation", "Tracked", "purple")}
-      ${metric("$317K", "Budget Savings", "YTD", "green")}
+      ${metric(budgetMetric, "Current Budget", budgetSummary.latest_year ? `${budgetSummary.latest_year} adopted` : "GitHub source", "green")}
       ${metric(metrics.development_projects || 0, "Development Projects", "Tracked", "cyan")}
       ${metric(metrics.media_mentions || state.media?.mentions || 0, "Media Mentions", "Last 24h", "purple")}
     </section>
@@ -515,16 +532,16 @@ function meetingsPanel() {
 
 function budgetPanel() {
   const summary = state.githubBudget?.summary || {};
-  const totalBudget = summary.total_budget ? money(summary.total_budget) : "$46.6M";
+  const totalBudget = summary.total_budget ? money(summary.total_budget) : "Not connected";
   return h`
     <section class="panel">
       <div class="panel-header"><h2>Budget Snapshot (YTD)</h2><button class="link" data-page="budget">View budget</button></div>
       <div class="panel-body split">
         <div class="donut"></div>
         <div>
-          <div class="budget-row"><span><b class="blue">●</b> Public Works</span><span>$21.4M</span><span class="muted">46%</span></div>
-          <div class="budget-row"><span><b class="orange">●</b> Police</span><span>$8.7M</span><span class="muted">19%</span></div>
-          <div class="budget-row"><span><b class="green">●</b> Recreation</span><span>$5.2M</span><span class="muted">11%</span></div>
+          <div class="budget-row"><span><b class="blue">●</b> Tax Levy</span><span>${summary.tax_levy ? money(summary.tax_levy) : "N/A"}</span><span class="muted">${summary.tax_levy_growth_percent ?? "N/A"}%</span></div>
+          <div class="budget-row"><span><b class="orange">●</b> Non-Tax Revenue</span><span>${summary.non_tax_revenue ? money(summary.non_tax_revenue) : "N/A"}</span><span class="muted"></span></div>
+          <div class="budget-row"><span><b class="green">●</b> Debt Service</span><span>${summary.debt_service ? money(summary.debt_service) : "N/A"}</span><span class="muted"></span></div>
           <div class="budget-row"><span>${summary.latest_year || "YTD"} Total Budget</span><strong>${totalBudget}</strong><span></span></div>
         </div>
       </div>
@@ -682,7 +699,7 @@ function briefingPage() {
     <section class="grid briefing-grid" style="margin-top:16px">
       ${priorityList()}
       <section class="panel">
-        <div class="panel-header"><h2>AI Summary</h2><small class="muted">Generated 6:00 AM</small></div>
+        <div class="panel-header"><h2>AI Summary</h2><small class="muted">Generated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></div>
         <div class="panel-body ai-summary">
           <div>
             <p><strong>${state.priorityIssues.length}</strong> priority items, <strong>${state.meetings.length}</strong> scheduled meetings, and <strong>${state.developments.length}</strong> development projects are currently tracked in WardOS.</p>
