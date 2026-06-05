@@ -616,6 +616,37 @@ function normalizePath(params: { path?: string[] }) {
   return `/${(params.path || []).join("/")}`;
 }
 
+function upstreamApiUrl(request: NextRequest, route: string) {
+  const baseUrl = process.env.WARDOS_API_URL?.trim();
+  if (!baseUrl) return null;
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}${route}`);
+  request.nextUrl.searchParams.forEach((value, key) => {
+    url.searchParams.append(key, value);
+  });
+  return url;
+}
+
+async function proxyToWardOSApi(request: NextRequest, route: string) {
+  const url = upstreamApiUrl(request, route);
+  if (!url) return null;
+  const headers = new Headers();
+  const contentType = request.headers.get("content-type");
+  if (contentType) headers.set("content-type", contentType);
+  const response = await fetch(url, {
+    method: request.method,
+    headers,
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
+    cache: "no-store",
+  });
+  return new NextResponse(response.body, {
+    status: response.status,
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": response.headers.get("content-type") || "application/json",
+    },
+  });
+}
+
 function createRow(store: Store, payload: Record<string, unknown>) {
   const now = new Date().toISOString();
   const row: StoredRow = {
@@ -726,8 +757,11 @@ function publicSafetyDashboard(store: Store) {
   };
 }
 
-export async function GET(_request: NextRequest, context: { params: { path?: string[] } }) {
+export async function GET(request: NextRequest, context: { params: { path?: string[] } }) {
   const route = normalizePath(context.params);
+  const upstreamResponse = await proxyToWardOSApi(request, route);
+  if (upstreamResponse) return upstreamResponse;
+
   const store = await readStore();
   if (route === "/dashboard/overview" || route === "/cases" || route === "/cases/export.csv") {
     await loadCases(store);
@@ -864,6 +898,9 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
 
 export async function POST(request: NextRequest, context: { params: { path?: string[] } }) {
   const route = normalizePath(context.params);
+  const upstreamResponse = await proxyToWardOSApi(request, route);
+  if (upstreamResponse) return upstreamResponse;
+
   const store = await readStore();
   const payload = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   let row: StoredRow | null = null;

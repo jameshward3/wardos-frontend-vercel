@@ -234,6 +234,10 @@ async function postJson(path, payload) {
 
 async function refreshOperationalData() {
   state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
+  state.priorityIssues = state.dashboardOverview.priority_issues || [];
+  state.meetings = state.dashboardOverview.meetings || state.meetings;
+  state.developments = state.dashboardOverview.developments || state.developments;
+  state.constituentSummary = await getJson("/constituents/summary", state.constituentSummary);
   state.cases = await getJson("/cases", state.cases);
   state.legislation = await getJson("/legislation", state.legislation);
   state.budget = await getJson("/budget-watch", state.budget);
