@@ -78,6 +78,9 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
                 <small>South Ward, Orange NJ</small>
               </div>
             </div>
+            <a className="logout-button" href="/logout">
+              Logout
+            </a>
           </div>
         </header>
 
@@ -101,7 +104,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=mobile-nav-20260605" strategy="afterInteractive" />
+      <Script src="/app.js?v=logout-20260605" strategy="afterInteractive" />
     </>
   );
 }

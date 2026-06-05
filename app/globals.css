@@ -285,6 +285,27 @@ nav {
   height: 42px;
 }
 
+.logout-button {
+  min-height: 38px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(12, 28, 47, 0.74);
+  color: #dbe6f2;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.logout-button:hover {
+  border-color: rgba(255, 78, 67, 0.42);
+  color: #ffffff;
+  background: rgba(255, 78, 67, 0.14);
+}
+
 .page-head {
   display: flex;
   align-items: center;
