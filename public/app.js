@@ -6,6 +6,7 @@ const routePageMap = {
   "/briefing": "briefing",
   "/constituents": "constituents",
   "/media-monitor": "media",
+  "/public-safety": "publicSafety",
   "/legislation": "legislation",
   "/budget": "budget",
   "/development": "development",
@@ -28,6 +29,7 @@ const state = {
   githubLegislation: null,
   media: null,
   mediaStories: [],
+  publicSafety: null,
   mediaConfig: null,
   sourceConnections: [],
   staffUsers: [],
@@ -66,6 +68,7 @@ const navItems = [
   ["progress", "◍", "Progress", ""],
   ["events", "◫", "Events", ""],
   ["media", "◉", "Media Monitor", ""],
+  ["publicSafety", "◈", "Public Safety", ""],
   ["settings", "⚙", "Settings", ""],
 ];
 
@@ -274,6 +277,7 @@ async function loadData() {
   state.githubProgress = await getJson("/integrations/github/progress", metricsFallback("First 100 Days"));
   state.githubLegislation = await getJson("/integrations/github/legislation", metricsFallback("Legislative Tracker"));
   state.media = await getJson("/media-monitor", { mentions: 0, topics: [], stories: [], alerts: [], actions: [] });
+  state.publicSafety = await getJson("/public-safety", publicSafetyFallback());
   state.mediaConfig = await getJson("/media-monitor/config", null);
   state.sourceConnections = await getJson("/source-connections", []);
   state.staffUsers = await getJson("/staff/users", []);
@@ -311,11 +315,31 @@ function operationalOverviewFallback() {
       pending_legislation: 0,
       development_projects: 0,
       media_mentions: 0,
+      public_safety_incidents: 0,
     },
     priority_issues: [],
     meetings: [],
     developments: [],
     actions: [],
+  };
+}
+
+function publicSafetyFallback() {
+  return {
+    generated_at: new Date().toISOString(),
+    source_folder: "data/public_safety",
+    metrics: {
+      total_incidents: 0,
+      violent_incidents: 0,
+      traffic_incidents: 0,
+      quality_of_life: 0,
+      resolved: 0,
+    },
+    score: { value: 0, label: "Awaiting Briefing", delta: "Upload OPD monthly briefing PDF" },
+    breakdown: [],
+    dangerous_intersections: [],
+    incidents: [],
+    insights: ["Upload the monthly police briefing PDF to data/public_safety, then run Public Safety Sync."],
   };
 }
 
@@ -449,6 +473,7 @@ function navCountFor(key) {
     development: metrics.development_projects,
     events: metrics.council_meetings,
     media: metrics.media_mentions,
+    publicSafety: state.publicSafety?.metrics?.total_incidents || metrics.public_safety_incidents,
   };
   return counts[key] || "";
 }
@@ -1487,6 +1512,12 @@ function initOpenMaps() {
           .addTo(map)
           .bindPopup(`<strong>${story.headline}</strong><br>${story.source}<br>${story.sentiment} · ${story.geo}`);
       });
+    } else if (container.dataset.mapKind === "public-safety") {
+      publicSafetyPins().forEach((pin, index) => {
+        L.marker([pin.lat, pin.lng], { icon: markerIcon(pin.tone, index + 1) })
+          .addTo(map)
+          .bindPopup(`<strong>${pin.title}</strong><br>${pin.location}<br>${pin.category} · ${pin.severity}`);
+      });
     } else {
       operationalMapPins().forEach((pin) => {
         L.marker([pin.lat, pin.lng], { icon: markerIcon(pin.tone, pin.id) })
@@ -1511,6 +1542,33 @@ function operationalMapPins() {
     .filter((row) => row.latitude && row.longitude)
     .forEach((row) => pins.push({ id: String(pins.length + 1), label: row.headline, type: "Media Mention", lat: row.latitude, lng: row.longitude, tone: sentimentClass(row.sentiment) }));
   return pins;
+}
+
+function publicSafetyTone(category, severity) {
+  if (category === "violent" || severity === "high") return "red";
+  if (category === "traffic") return "orange";
+  if (category === "quality_of_life") return "purple";
+  if (category === "infrastructure") return "blue";
+  return "green";
+}
+
+function publicSafetyPins() {
+  const fallback = [
+    [40.7564, -74.2426],
+    [40.7536, -74.2396],
+    [40.7518, -74.2464],
+    [40.7582, -74.2479],
+    [40.7548, -74.251],
+  ];
+  return ((state.publicSafety && state.publicSafety.incidents) || []).map((incident, index) => ({
+    title: incident.title || "Public Safety Incident",
+    location: incident.location || "South Ward",
+    category: incident.category_label || incident.category || "Other",
+    severity: incident.severity || "medium",
+    lat: Number(incident.latitude) || fallback[index % fallback.length][0],
+    lng: Number(incident.longitude) || fallback[index % fallback.length][1],
+    tone: publicSafetyTone(incident.category, incident.severity),
+  }));
 }
 
 function mediaPanel(full = true) {
@@ -1853,6 +1911,147 @@ function mediaSourceSetupPanel() {
   `;
 }
 
+function publicSafetyMetric(value, label, sub, tone, icon) {
+  return h`
+    <article class="metric safety-metric ${tone}">
+      <span class="metric-icon">${icon}</span>
+      <div>
+        <small>${label}</small>
+        <strong>${value}</strong>
+        <span class="${String(sub).startsWith("↑") ? "up" : "muted"}">${sub}</span>
+      </div>
+    </article>
+  `;
+}
+
+function publicSafetyCategoryTone(category, severity) {
+  if (category === "violent" || severity === "high") return "hot";
+  if (category === "traffic") return "warn";
+  if (category === "quality_of_life") return "purple";
+  if (category === "infrastructure") return "blue";
+  return "good";
+}
+
+function publicSafetyPage() {
+  const safety = state.publicSafety || publicSafetyFallback();
+  const metrics = safety.metrics || publicSafetyFallback().metrics;
+  const incidents = safety.incidents || [];
+  const score = safety.score || { value: 0, label: "Awaiting Briefing", delta: "Upload briefing PDF" };
+  const breakdown = safety.breakdown || [];
+  const intersections = safety.dangerous_intersections || [];
+  const total = metrics.total_incidents || 0;
+  const pct = (count) => total ? Math.round((count / total) * 100) : 0;
+  return h`
+    <div class="page-head safety-title">
+      <div>
+        <h1>Public Safety</h1>
+        <p class="muted">Real-time overview of public safety issues and community incidents in South Ward.</p>
+      </div>
+      <div class="header-actions">
+        <button class="secondary">Last 30 Days</button>
+        <button class="secondary" data-sync-public-safety>Sync Police Briefing</button>
+        <button class="primary" data-open-modal="publicSafety">＋ Report an Issue</button>
+      </div>
+    </div>
+
+    <section class="grid safety-metrics">
+      ${publicSafetyMetric(metrics.total_incidents || 0, "Total Incidents", "Current briefing set", "blue", "◈")}
+      ${publicSafetyMetric(metrics.violent_incidents || 0, "Violent Incidents", "Staff review required", "red", "▲")}
+      ${publicSafetyMetric(metrics.traffic_incidents || 0, "Traffic Incidents", "DPW / enforcement watch", "orange", "▰")}
+      ${publicSafetyMetric(metrics.quality_of_life || 0, "Quality of Life", "Neighborhood conditions", "purple", "●")}
+      ${publicSafetyMetric(metrics.resolved || 0, "Resolved", `${total ? pct(metrics.resolved || 0) : 0}% resolution rate`, "green", "✓")}
+    </section>
+
+    <section class="grid safety-grid">
+      <section class="panel">
+        <div class="panel-header"><h2>Incident Feed</h2><button class="link" data-open-modal="publicSafety">Add</button></div>
+        <div class="panel-body list">
+          ${incidents.slice(0, 8).map((incident) => {
+            const tone = publicSafetyCategoryTone(incident.category, incident.severity);
+            return h`
+              <button class="list-row ghost safety-incident" data-open-draft="${incident.title}" style="text-align:left">
+                <span class="rank ${tone}">${incident.category === "traffic" ? "▰" : incident.category === "violent" ? "▲" : incident.category === "quality_of_life" ? "●" : "◆"}</span>
+                <span><strong>${incident.title}</strong><br><small class="muted">${incident.location || "South Ward"}<br>${formatShortDate(incident.occurred_at || incident.created_at)}</small></span>
+                <span><span class="status ${tone}">${incident.severity || "medium"}</span></span>
+              </button>
+            `;
+          }).join("") || `<div class="empty-state"><strong>No incidents loaded yet.</strong><span class="muted">Place the OPD monthly briefing PDF in data/public_safety, then run sync.</span></div>`}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><h2>South Ward Safety Map</h2><button class="secondary">Layers</button></div>
+        <div class="safety-map osm-map" data-map-kind="public-safety" aria-label="Interactive OpenStreetMap view of South Ward public safety incidents"></div>
+        <div class="layer-strip">
+          <span>Show:</span>
+          <label><input type="checkbox" checked> Traffic</label>
+          <label><input type="checkbox" checked> Violent</label>
+          <label><input type="checkbox" checked> Quality of Life</label>
+          <label><input type="checkbox" checked> Infrastructure</label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><h2>Ward Safety Score</h2><button class="link" data-open-draft="Safety Score Methodology">How It's Calculated</button></div>
+        <div class="panel-body">
+          <div class="score-block">
+            <div class="score-ring" style="--score-pct:${score.value || 0}%">
+              <strong>${score.value || 0}</strong><span>/100</span>
+            </div>
+            <div><strong class="green score-label">${score.label}</strong><br><small class="muted">${score.delta}</small></div>
+          </div>
+          <div class="score-list">
+            <div><span>Traffic Safety</span><strong class="orange">${Math.max(0, 78 - (metrics.traffic_incidents || 0))}/100</strong></div>
+            <div><span>Lighting & Infrastructure</span><strong class="green">${Math.max(0, 82 - (breakdown.find((row) => row.category === "infrastructure")?.count || 0))}/100</strong></div>
+            <div><span>Walkability</span><strong class="orange">69/100</strong></div>
+            <div><span>Emergency Response</span><strong class="green">81/100</strong></div>
+            <div><span>Complaint Resolution</span><strong class="green">${Math.min(100, 60 + pct(metrics.resolved || 0))}/100</strong></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="grid safety-bottom">
+      <section class="panel">
+        <div class="panel-header"><h2>Top Dangerous Intersections</h2><button class="link">View all</button></div>
+        <div class="panel-body">
+          ${(intersections.length ? intersections : [{ location: "Awaiting OPD briefing upload", count: 0 }]).map((row, index) => h`
+            <div class="budget-row"><span>${index + 1}. ${row.location}</span><strong>${row.count}</strong><span></span></div>
+          `).join("")}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Incidents Over Time</h2><button class="secondary">Daily</button></div>
+        <div class="panel-body">
+          <div class="sparkline"><span style="height:42%"></span><span style="height:68%"></span><span style="height:38%"></span><span style="height:74%"></span><span style="height:55%"></span><span style="height:86%"></span><span style="height:46%"></span><span style="height:58%"></span></div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Incident Breakdown</h2></div>
+        <div class="panel-body split">
+          <div class="donut safety-donut" style="--traffic:${pct(metrics.traffic_incidents || 0)}%;--quality:${pct(metrics.quality_of_life || 0)}%;--violent:${pct(metrics.violent_incidents || 0)}%"><strong>${total}<span>Total</span></strong></div>
+          <div>
+            ${breakdown.map((row) => `<div class="budget-row"><span>${row.label}</span><strong>${pct(row.count)}%</strong><span>(${row.count})</span></div>`).join("") || `<div class="empty">No breakdown yet.</div>`}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>AI Safety Insights</h2></div>
+        <div class="panel-body list">
+          ${(safety.insights || []).map((insight) => h`
+            <button class="list-row ghost" data-open-draft="Public Safety Follow-up">
+              <span class="rank blue">i</span>
+              <span><strong>${insight}</strong><br><small class="muted">Staff verification required before external action.</small></span>
+              <span></span>
+            </button>
+          `).join("")}
+          <button class="link" data-open-draft="Ask WardOS AI Public Safety Review">Ask WardOS AI</button>
+        </div>
+      </section>
+    </section>
+  `;
+}
+
 function genericPage(title, copy) {
   return h`
     <div class="page-head"><div><h1>${title}</h1><p class="muted">${copy}</p></div><button class="primary" data-open-modal="quick">Manual Add</button></div>
@@ -1954,6 +2153,7 @@ function renderPage() {
     progress: progressPage,
     events: () => genericPage("Events", "Manage meeting calendars, public events, and staff preparation notes."),
     media: mediaPage,
+    publicSafety: publicSafetyPage,
     settings: settingsPage,
   };
   document.getElementById("page").innerHTML = (routes[state.page] || briefingPage)();
@@ -2085,6 +2285,12 @@ function bindEvents() {
     state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
     render();
   });
+  document.querySelector("[data-sync-public-safety]")?.addEventListener("click", async () => {
+    await postJson("/public-safety/sync", {}).catch(showSaveError);
+    state.publicSafety = await getJson("/public-safety", state.publicSafety || publicSafetyFallback());
+    state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
+    render();
+  });
 }
 
 function openModal(type) {
@@ -2093,6 +2299,7 @@ function openModal(type) {
     case: ["Manual Add", "New Constituent Need"],
     legislation: ["Manual Add", "New Legislation Item"],
     budget: ["Manual Add", "New Budget Watch Item"],
+    publicSafety: ["Manual Add", "New Public Safety Incident"],
     note: ["Manual Add", "New Note"],
   };
   const [eyebrow, title] = titles[type] || titles.quick;
@@ -2151,6 +2358,7 @@ function modalContent(type) {
         <button class="action-tile" data-open-modal="case"><strong>＋</strong><span>Add Request</span></button>
         <button class="action-tile" data-open-modal="legislation"><strong>▧</strong><span>Add Legislation</span></button>
         <button class="action-tile" data-open-modal="budget"><strong>▤</strong><span>Add Budget</span></button>
+        <button class="action-tile" data-open-modal="publicSafety"><strong>◈</strong><span>Public Safety</span></button>
         <button class="action-tile" data-open-draft="Resident Follow-up"><strong>✉</strong><span>Draft Follow-up</span></button>
         <button class="action-tile" data-open-draft="Media Response"><strong>◉</strong><span>Media Draft</span></button>
         <button class="action-tile" data-open-draft="Research Task"><strong>✦</strong><span>AI Research</span></button>
@@ -2196,6 +2404,20 @@ function modalContent(type) {
       </form>
     `;
   }
+  if (type === "publicSafety") {
+    return h`
+      <form class="form-grid" id="publicSafetyForm">
+        <div class="field"><label>Incident Title</label><input name="title" required placeholder="Traffic collision"></div>
+        <div class="field"><label>Category</label><select name="category"><option value="traffic">Traffic</option><option value="violent">Violent</option><option value="quality_of_life">Quality of Life</option><option value="infrastructure">Infrastructure</option><option value="other">Other</option></select></div>
+        <div class="field"><label>Location</label><input name="location" placeholder="Street or intersection"></div>
+        <div class="field"><label>Severity</label><select name="severity"><option>medium</option><option>high</option><option>low</option></select></div>
+        <div class="field"><label>Status</label><select name="status"><option>reported</option><option>under review</option><option>resolved</option><option>closed</option></select></div>
+        <div class="field"><label>Occurred At</label><input name="occurred_at" type="datetime-local"></div>
+        <div class="field"><label>Notes</label><textarea name="notes" placeholder="Briefing excerpt, source detail, staff follow-up, and verification notes"></textarea></div>
+        <button class="primary" type="submit">Add Public Safety Incident</button>
+      </form>
+    `;
+  }
   return h`
     <form class="form-grid" id="noteForm">
       <div class="field"><label>Title</label><input name="title" required></div>
@@ -2228,6 +2450,13 @@ function bindModalForms(type) {
       const payload = Object.fromEntries(new FormData(form));
       await postJson("/budget-watch", payload);
       await refreshOperationalData();
+    },
+    publicSafety: async (form) => {
+      const payload = Object.fromEntries(new FormData(form));
+      if (!payload.occurred_at) delete payload.occurred_at;
+      await postJson("/public-safety/incidents", payload);
+      state.publicSafety = await getJson("/public-safety", state.publicSafety || publicSafetyFallback());
+      state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
     },
     note: async (form) => {
       const payload = Object.fromEntries(new FormData(form));

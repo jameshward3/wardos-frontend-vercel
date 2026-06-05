@@ -14,6 +14,7 @@ type Store = {
   budgetWatch: StoredRow[];
   officeActions: StoredRow[];
   mediaMentions: StoredRow[];
+  publicSafetyIncidents: StoredRow[];
   sourceConnections: StoredRow[];
   staffUsers: StoredRow[];
 };
@@ -271,6 +272,99 @@ const SEEDED_MEDIA_MENTIONS = [
   },
 ];
 
+const SEEDED_PUBLIC_SAFETY_INCIDENTS = [
+  {
+    id: 501,
+    incident_type: "Traffic",
+    category: "traffic",
+    category_label: "Traffic",
+    title: "Traffic Collision",
+    location: "Plymouth Rd & Schaefer Hwy",
+    occurred_at: "2026-06-05T20:42:00-04:00",
+    status: "reported",
+    severity: "high",
+    ward: "South Ward",
+    latitude: 40.7564,
+    longitude: -74.2426,
+    source_file: "sample-police-monthly-briefing.pdf",
+    source_url: "",
+    notes: "Sample structure for OPD monthly briefing intake. Replace by uploading the current PDF to data/public_safety and running sync.",
+    created_at: "2026-06-05T00:00:00.000Z",
+  },
+  {
+    id: 502,
+    incident_type: "Violent",
+    category: "violent",
+    category_label: "Violent",
+    title: "Shooting Investigation",
+    location: "Burt Rd & Joy Rd",
+    occurred_at: "2026-06-05T19:31:00-04:00",
+    status: "under review",
+    severity: "high",
+    ward: "South Ward",
+    latitude: 40.7536,
+    longitude: -74.2396,
+    source_file: "sample-police-monthly-briefing.pdf",
+    source_url: "",
+    notes: "Staff review required before any external comment.",
+    created_at: "2026-06-05T00:00:00.000Z",
+  },
+  {
+    id: 503,
+    incident_type: "Quality of Life",
+    category: "quality_of_life",
+    category_label: "Quality of Life",
+    title: "Illegal Dumping",
+    location: "Outer Dr W & Thatcher Ave",
+    occurred_at: "2026-06-05T18:22:00-04:00",
+    status: "reported",
+    severity: "medium",
+    ward: "South Ward",
+    latitude: 40.7518,
+    longitude: -74.2464,
+    source_file: "sample-police-monthly-briefing.pdf",
+    source_url: "",
+    notes: "Coordinate sanitation, code enforcement, and outreach follow-up.",
+    created_at: "2026-06-05T00:00:00.000Z",
+  },
+  {
+    id: 504,
+    incident_type: "Infrastructure",
+    category: "infrastructure",
+    category_label: "Infrastructure",
+    title: "Street Light Outage",
+    location: "Westwood St & Park Ave",
+    occurred_at: "2026-06-05T17:18:00-04:00",
+    status: "reported",
+    severity: "low",
+    ward: "South Ward",
+    latitude: 40.7582,
+    longitude: -74.2479,
+    source_file: "sample-police-monthly-briefing.pdf",
+    source_url: "",
+    notes: "Check if related constituent cases already exist.",
+    created_at: "2026-06-05T00:00:00.000Z",
+  },
+  {
+    id: 505,
+    incident_type: "Infrastructure",
+    category: "infrastructure",
+    category_label: "Infrastructure",
+    title: "Fallen Tree",
+    location: "Scotland Rd near Park Ave",
+    occurred_at: "2026-06-05T16:05:00-04:00",
+    status: "resolved",
+    severity: "low",
+    ward: "South Ward",
+    latitude: 40.7548,
+    longitude: -74.251,
+    source_file: "sample-police-monthly-briefing.pdf",
+    source_url: "",
+    notes: "Mark resolved after DPW confirmation.",
+    created_at: "2026-06-05T00:00:00.000Z",
+  },
+];
+
 const GITHUB_SOURCES = {
   budget: {
     label: "Orange Budget Dashboard",
@@ -300,6 +394,7 @@ function emptyStore(): Store {
     budgetWatch: [],
     officeActions: [],
     mediaMentions: [],
+    publicSafetyIncidents: [],
     sourceConnections: [],
     staffUsers: [],
   };
@@ -535,6 +630,7 @@ function createRow(store: Store, payload: Record<string, unknown>) {
 function dashboardOverview(store: Store) {
   const openCases = store.cases.filter((row) => row.status !== "closed");
   const seededMedia = store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS;
+  const publicSafety = store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS;
   return {
     sample_mode: false,
     metrics: {
@@ -545,6 +641,7 @@ function dashboardOverview(store: Store) {
       pending_legislation: store.legislation.length,
       development_projects: 87,
       media_mentions: seededMedia.length,
+      public_safety_incidents: publicSafety.length,
     },
     priority_issues: openCases.slice(-5).reverse().map((row) => ({
       id: row.id,
@@ -557,6 +654,71 @@ function dashboardOverview(store: Store) {
     meetings: SEEDED_MEETINGS,
     developments: SEEDED_DEVELOPMENTS,
     actions: store.officeActions.slice(-8).reverse(),
+  };
+}
+
+function categoryLabel(category: unknown) {
+  const labels: Record<string, string> = {
+    traffic: "Traffic",
+    violent: "Violent",
+    quality_of_life: "Quality of Life",
+    infrastructure: "Infrastructure",
+    other: "Other",
+  };
+  return labels[String(category || "other")] || "Other";
+}
+
+function publicSafetyDashboard(store: Store) {
+  const incidents = (store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS).map((row) => ({
+    ...row,
+    category_label: row.category_label || categoryLabel(row.category),
+  }));
+  const count = (category: string) => incidents.filter((row) => row.category === category).length;
+  const resolved = incidents.filter((row) => String(row.status || "").toLowerCase() === "resolved" || String(row.status || "").toLowerCase() === "closed").length;
+  const locationCounts = new Map<string, number>();
+  incidents.forEach((row) => {
+    const location = String(row.location || "South Ward");
+    locationCounts.set(location, (locationCounts.get(location) || 0) + 1);
+  });
+  const dangerousIntersections = [...locationCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([location, incidentCount]) => ({ location, count: incidentCount }));
+  const total = incidents.length;
+  const violent = count("violent");
+  const traffic = count("traffic");
+  const quality = count("quality_of_life");
+  const infrastructure = count("infrastructure");
+  const score = Math.max(0, Math.min(100, 82 - violent * 2 - traffic + resolved));
+  return {
+    generated_at: new Date().toISOString(),
+    source_folder: "data/public_safety",
+    metrics: {
+      total_incidents: total,
+      violent_incidents: violent,
+      traffic_incidents: traffic,
+      quality_of_life: quality,
+      resolved,
+    },
+    score: {
+      value: score,
+      label: score >= 70 ? "Good" : score >= 50 ? "Needs Attention" : "High Concern",
+      delta: score >= 70 ? "+6 pts vs last 30 days" : "Review with OPD briefing",
+    },
+    breakdown: [
+      { label: "Traffic", category: "traffic", count: traffic },
+      { label: "Quality of Life", category: "quality_of_life", count: quality },
+      { label: "Violent", category: "violent", count: violent },
+      { label: "Infrastructure", category: "infrastructure", count: infrastructure },
+      { label: "Other", category: "other", count: count("other") },
+    ].filter((row) => row.count > 0),
+    dangerous_intersections: dangerousIntersections,
+    incidents,
+    insights: [
+      dangerousIntersections[0] ? `${dangerousIntersections[0].location} has the highest incident concentration in the current set.` : "Upload the current OPD briefing PDF to populate incident hot spots.",
+      traffic ? "Traffic incidents should be reviewed for DPW, enforcement, and pedestrian-safety follow-up." : "No traffic incidents recorded in the current set.",
+      violent ? "Violent incident records require OPD verification before public comment." : "No violent incidents recorded in the current set.",
+    ],
   };
 }
 
@@ -582,6 +744,7 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
         events: 171,
         development_projects: 87,
         media_mentions: (store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS).length,
+        public_safety_incidents: (store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS).length,
         city_bulletins: 8,
         staff_users: (store.staffUsers.length ? store.staffUsers : SEEDED_STAFF_USERS).length,
       },
@@ -660,6 +823,7 @@ export async function GET(_request: NextRequest, context: { params: { path?: str
     });
   }
   if (route === "/media-monitor/config") return json(SEEDED_MEDIA_CONFIG);
+  if (route === "/public-safety") return json(publicSafetyDashboard(store));
   if (route === "/weather/today") {
     return json({ ok: true, location: "Orange, NJ", temperature: 62, high: 74, low: 52, condition: "Sunny", symbol: "☀" });
   }
@@ -719,6 +883,9 @@ export async function POST(request: NextRequest, context: { params: { path?: str
   } else if (route === "/media-mentions") {
     row = createRow(store, { sentiment: "neutral", ...payload });
     store.mediaMentions.push(row);
+  } else if (route === "/public-safety/incidents") {
+    row = createRow(store, { status: "reported", severity: "medium", ward: "South Ward", category: "other", ...payload });
+    store.publicSafetyIncidents.push(row);
   } else if (route === "/source-connections") {
     row = createRow(store, { enabled: true, status: "not_configured", ...payload });
     store.sourceConnections.push(row);

@@ -6,6 +6,7 @@ const pageMap: Record<string, string> = {
   briefing: "briefing",
   constituents: "constituents",
   media: "media",
+  publicSafety: "publicSafety",
   legislation: "legislation",
   budget: "budget",
   development: "development",
