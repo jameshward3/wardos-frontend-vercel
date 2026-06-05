@@ -40,10 +40,11 @@ export async function createSessionValue(secret: string) {
   return `${expiresAt}.${signature}`;
 }
 
-export async function createWorkspaceSessionValue(email: string, secret: string) {
+export async function createWorkspaceSessionValue(email: string, secret: string, role = "staff") {
   const expiresAt = Date.now() + SESSION_TTL_SECONDS * 1000;
   const subject = email.toLowerCase();
-  const unsignedValue = `google:${subject}:${expiresAt}`;
+  const normalizedRole = role.toLowerCase();
+  const unsignedValue = `google:${subject}:${normalizedRole}:${expiresAt}`;
   const signature = await sign(unsignedValue, secret);
   return `${unsignedValue}:${signature}`;
 }
@@ -60,11 +61,21 @@ export async function isValidSessionValue(value: string | undefined, secret: str
   if (!value || !secret) return false;
 
   if (value.startsWith("google:")) {
-    const [provider, email, expiresAt, signature] = value.split(":");
-    if (provider !== "google" || !email || !expiresAt || !signature) return false;
+    const parts = value.split(":");
+    if (parts.length === 4) {
+      const [provider, email, expiresAt, signature] = parts;
+      if (provider !== "google" || !email || !expiresAt || !signature) return false;
+      const expires = Number(expiresAt);
+      if (!Number.isFinite(expires) || expires < Date.now()) return false;
+      const expected = await sign(`${provider}:${email}:${expiresAt}`, secret);
+      return constantTimeEqual(signature, expected);
+    }
+
+    const [provider, email, role, expiresAt, signature] = parts;
+    if (provider !== "google" || !email || !role || !expiresAt || !signature) return false;
     const expires = Number(expiresAt);
     if (!Number.isFinite(expires) || expires < Date.now()) return false;
-    const expected = await sign(`${provider}:${email}:${expiresAt}`, secret);
+    const expected = await sign(`${provider}:${email}:${role}:${expiresAt}`, secret);
     return constantTimeEqual(signature, expected);
   }
 

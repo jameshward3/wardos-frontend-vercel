@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_WORKSPACE_DOMAIN, GOOGLE_OAUTH_STATE_COOKIE } from "../../../../../lib/google-auth";
+import { DEFAULT_WORKSPACE_DOMAIN, GOOGLE_OAUTH_STATE_COOKIE, roleForGoogleEmail } from "../../../../../lib/google-auth";
 import { createWorkspaceSessionValue, getSessionSecret, SESSION_COOKIE, SESSION_TTL_SECONDS } from "../../../../../lib/session";
 
 type GoogleTokenResponse = {
@@ -85,15 +85,16 @@ export async function GET(request: NextRequest) {
   const hostedDomain = tokenInfo.hd?.toLowerCase();
   const allowedDomain = workspaceDomain.toLowerCase();
   const domainMatches = hostedDomain === allowedDomain || email.endsWith(`@${allowedDomain}`);
+  const role = roleForGoogleEmail(email);
 
-  if (!tokenInfoResponse.ok || tokenInfo.aud !== clientId || !verified || !domainMatches) {
+  if (!tokenInfoResponse.ok || tokenInfo.aud !== clientId || !verified || !domainMatches || !role) {
     return loginRedirect(request, "workspace", nextPath);
   }
 
   const response = NextResponse.redirect(new URL(nextPath, request.url), { status: 303 });
   response.cookies.set({
     name: SESSION_COOKIE,
-    value: await createWorkspaceSessionValue(email, sessionSecret),
+    value: await createWorkspaceSessionValue(email, sessionSecret, role),
     httpOnly: true,
     secure: true,
     sameSite: "lax",

@@ -34,6 +34,7 @@ The middleware protects these routes:
 /legislation
 /budget
 /development
+/public-safety
 /settings
 ```
 
@@ -50,6 +51,7 @@ WARDOS_API_URL=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
+WARDOS_GOOGLE_ROLE_MAP={"james@jameswardfororange.com":"admin","manager@jameswardfororange.com":"strategy_advisor"}
 WARDOS_CASE_LOG_REPO=
 WARDOS_CASE_LOG_TOKEN=
 WARDOS_CASE_LOG_BRANCH=main
@@ -115,7 +117,32 @@ GOOGLE_CLIENT_SECRET=
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
 ```
 
-WardOS verifies the Google ID token server-side and only accepts verified emails from `jameswardfororange.com`.
+WardOS verifies the Google ID token server-side, requires a verified `jameswardfororange.com` email, and then checks that email against the WardOS role map.
+
+Production Google Cloud settings:
+
+```text
+Application type: Web application
+Authorized JavaScript origin: https://wardos.jw4o.com
+Authorized redirect URI: https://wardos.jw4o.com/api/auth/google/callback
+Allowed Workspace domain: jameswardfororange.com
+Scopes: openid, email, profile
+```
+
+Production role map:
+
+```text
+james@jameswardfororange.com -> admin
+manager@jameswardfororange.com -> strategy_advisor
+```
+
+Set the same map in Vercel as:
+
+```env
+WARDOS_GOOGLE_ROLE_MAP={"james@jameswardfororange.com":"admin","manager@jameswardfororange.com":"strategy_advisor"}
+```
+
+If `WARDOS_GOOGLE_ROLE_MAP` is blank, WardOS uses the same two-user default map above. Any other Google Workspace account in the domain is rejected until it is added to the role map.
 
 ## Local Development
 
@@ -155,6 +182,7 @@ WARDOS_API_URL=https://your-reachable-wardos-api.example.com
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
+WARDOS_GOOGLE_ROLE_MAP={"james@jameswardfororange.com":"admin","manager@jameswardfororange.com":"strategy_advisor"}
 WARDOS_CASE_LOG_REPO=jameshward3/your-private-data-repo
 WARDOS_CASE_LOG_TOKEN=github-token-with-contents-read-write
 WARDOS_CASE_LOG_BRANCH=main
@@ -231,6 +259,19 @@ https://wardos.jw4o.com/login
 
 ```text
 https://wardos.jw4o.com/dashboard
+```
+
+5. Confirm the signed-in role endpoint returns your Workspace identity while signed in:
+
+```text
+https://wardos.jw4o.com/api/auth/session
+```
+
+Expected roles:
+
+```text
+james@jameswardfororange.com -> admin
+manager@jameswardfororange.com -> strategy_advisor
 ```
 
 Password fallback:

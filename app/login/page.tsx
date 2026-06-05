@@ -9,7 +9,7 @@ export default function LoginPage({
     google_config: "Google Workspace login is not configured yet.",
     google_state: "Google sign-in expired. Try again.",
     google_token: "Google sign-in could not be verified. Try again.",
-    workspace: "Use a jameswardfororange.com Google Workspace account.",
+    workspace: "Use an approved jameswardfororange.com Google Workspace account.",
   };
   const errorMessage = searchParams.error ? errorMessages[searchParams.error] || "Sign-in failed. Try again." : "";
 
