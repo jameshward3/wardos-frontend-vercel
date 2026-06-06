@@ -607,6 +607,135 @@ function developmentPanel() {
   `;
 }
 
+const developmentAddressGeocodes = {
+  "434 parkinson terrace": { latitude: 40.779956092854, longitude: -74.229939638992, source: "census", status: "matched" },
+  "391 lakeside avenue": { latitude: 40.78047265346, longitude: -74.227877631855, source: "census", status: "matched" },
+  "124-128 ward street": { latitude: 40.771591287717, longitude: -74.223370118311, source: "census", status: "range match" },
+  "124 ward street": { latitude: 40.771591287717, longitude: -74.223370118311, source: "census", status: "range match" },
+  "220 n center street": { latitude: 40.766378716389, longitude: -74.231315592045, source: "census", status: "review: census returned 220 S Center St" },
+  "220 north center street": { latitude: 40.766378716389, longitude: -74.231315592045, source: "census", status: "review: census returned 220 S Center St" },
+  "47 hillyer street": { latitude: 40.770223439859, longitude: -74.222011983863, source: "census", status: "matched" },
+};
+
+function normalizeAddress(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/\b(st|st\.)\b/g, "street")
+    .replace(/\b(ave|ave\.)\b/g, "avenue")
+    .replace(/\b(ter|ter\.)\b/g, "terrace")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferDevelopmentDate(item) {
+  const candidates = [
+    item.document_date,
+    item.meeting_date,
+    item.date,
+    item.created_at,
+    String(item.source_url || "").match(/\/(20\d{2})\//)?.[1],
+    String(item.name || item.title || "").match(/\b(20\d{2})\b/)?.[1],
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const text = String(candidate);
+    if (/^20\d{2}$/.test(text)) return new Date(`${text}-01-01T00:00:00`);
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.valueOf())) return parsed;
+  }
+  return null;
+}
+
+function developmentProjectMapItems() {
+  const watch = state.developmentWatch || developmentWatchFallback();
+  const merged = [...(watch.watch_items || []), ...(state.developments || [])];
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 4);
+  const seen = new Set();
+  return merged
+    .map((item, index) => {
+      const key = item.source_id || `${item.name || item.title}-${item.address || index}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      const date = inferDevelopmentDate(item);
+      const normalized = normalizeAddress(item.address);
+      const geocode = item.latitude && item.longitude ? {
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        source: item.geocoder_source || "stored",
+        status: item.geocode_status || "stored",
+      } : developmentAddressGeocodes[normalized];
+      return {
+        ...item,
+        id: item.id || key,
+        name: item.name || item.title || "Development record",
+        date,
+        dateLabel: date ? formatShortDate(date.toISOString()) : "Date pending",
+        latitude: geocode?.latitude,
+        longitude: geocode?.longitude,
+        geocoder_source: geocode?.source || item.geocoder_source || "needs geocode",
+        geocode_status: geocode?.status || item.geocode_status || "needs review",
+      };
+    })
+    .filter(Boolean)
+    .filter((item) => !item.date || item.date >= cutoff)
+    .sort((a, b) => (b.date?.valueOf() || 0) - (a.date?.valueOf() || 0));
+}
+
+function developmentMapPins() {
+  return developmentProjectMapItems()
+    .filter((item) => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)))
+    .map((item, index) => ({
+      id: String(index + 1),
+      label: item.name,
+      address: item.address || "Address pending",
+      board: item.board || "Planning / Zoning",
+      type: item.project_type || "development",
+      status: item.status || "tracking",
+      date: item.dateLabel,
+      sourceUrl: item.source_url || "",
+      geocodeStatus: item.geocode_status,
+      lat: Number(item.latitude),
+      lng: Number(item.longitude),
+      tone: String(item.board || "").toLowerCase().includes("planning") ? "blue" : "purple",
+    }));
+}
+
+function developmentMapPanel() {
+  const items = developmentProjectMapItems();
+  const pins = developmentMapPins();
+  const needsReview = items.filter((item) => !Number.isFinite(Number(item.latitude)) || !Number.isFinite(Number(item.longitude)) || String(item.geocode_status).includes("review"));
+  return h`
+    <section class="panel development-map-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Planning & Zoning Project Map</h2>
+          <small class="muted">Last 4 years · ${pins.length} plotted · ${needsReview.length} need geocode review</small>
+        </div>
+        <button class="secondary" data-sync-development>Sync Board Sources</button>
+      </div>
+      <div class="development-map-layout">
+        <div class="development-map osm-map" data-map-kind="development" aria-label="Interactive OpenStreetMap map of planning and zoning project addresses"></div>
+        <aside class="development-map-rail">
+          <div class="brief-cell"><small>Mapped Records</small><strong>${pins.length}</strong></div>
+          <div class="brief-cell"><small>Source Window</small><strong>4 years</strong></div>
+          <div class="brief-cell"><small>Boards</small><strong>Planning + Zoning</strong></div>
+          <div class="list-stack">
+            ${items.slice(0, 8).map((item) => `
+              <article class="mini-card">
+                <div>
+                  <strong>${item.name}</strong>
+                  <p class="muted">${item.address || "Address not listed"} · ${item.dateLabel} · ${item.board || "Board source"}</p>
+                </div>
+                <span class="status ${String(item.geocode_status).includes("review") || !item.latitude ? "warn" : "good"}">${item.geocode_status}</span>
+              </article>
+            `).join("") || `<div class="empty">No planning or zoning project records in the four-year window.</div>`}
+          </div>
+        </aside>
+      </div>
+    </section>
+  `;
+}
+
 function boardDocumentRows(meetings) {
   const docs = meetings.flatMap((meeting) =>
     (meeting.documents || []).map((document) => ({ ...document, board: meeting.board, date: meeting.date, meetingTitle: meeting.title }))
@@ -651,6 +780,7 @@ function developmentPage() {
       ${metric(boardDocumentRows(watch.meetings || []).includes("mini-card") ? (watch.meetings || []).reduce((sum, row) => sum + (row.documents || []).length, 0) : 0, "Linked Records", "Clickable details", "cyan")}
       ${metric(sourceRows.length, "Sources", "Planning + zoning", "orange")}
     </section>
+    ${developmentMapPanel()}
     <section class="grid dashboard-grid">
       <section class="panel">
         <div class="panel-header"><h2>Official Board Sources</h2><span class="muted">Last sync: ${watch.fetched_at ? formatShortDate(watch.fetched_at) : "Not synced"}</span></div>
@@ -1825,6 +1955,16 @@ function initOpenMaps() {
           .addTo(map)
           .bindPopup(`<strong>${story.headline}</strong><br>${story.source}<br>${story.sentiment} · ${story.geo}`);
       });
+    } else if (container.dataset.mapKind === "development") {
+      const pins = developmentMapPins();
+      const bounds = [];
+      pins.forEach((pin) => {
+        bounds.push([pin.lat, pin.lng]);
+        L.marker([pin.lat, pin.lng], { icon: markerIcon(pin.tone, pin.id) })
+          .addTo(map)
+          .bindPopup(`<strong>${pin.label}</strong><br>${pin.address}<br>${pin.board} · ${pin.type}<br>${pin.date}<br>${pin.geocodeStatus}${pin.sourceUrl ? `<br><a href="${pin.sourceUrl}" target="_blank" rel="noopener noreferrer">Open record</a>` : ""}`);
+      });
+      if (bounds.length) map.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 });
     } else if (container.dataset.mapKind === "public-safety") {
       publicSafetyPins().forEach((pin, index) => {
         L.marker([pin.lat, pin.lng], { icon: markerIcon(pin.tone, index + 1) })

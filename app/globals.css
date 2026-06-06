@@ -1692,6 +1692,31 @@ h3 {
   min-height: 320px;
 }
 
+.development-map-panel {
+  margin-bottom: 16px;
+}
+
+.development-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.65fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.development-map {
+  min-height: 430px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #071722;
+}
+
+.development-map-rail {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
 .safety-title {
   align-items: end;
 }
@@ -2168,6 +2193,7 @@ h3 {
   .media-metrics,
   .broadcast-grid,
   .alert-grid,
+  .development-map-layout,
   .safety-grid,
   .safety-bottom,
   .safety-metrics {
