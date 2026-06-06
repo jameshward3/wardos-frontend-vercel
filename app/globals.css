@@ -1286,6 +1286,182 @@ h3 {
   background: var(--green);
 }
 
+.support-bar.wide {
+  width: 100%;
+  display: block;
+  margin: 10px 0 6px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.initiative-board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+}
+
+.initiative-column {
+  min-width: 180px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.initiative-column h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+  padding: 0 2px 8px;
+  color: #eef6ff;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.initiative-column h3 small {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(36, 147, 255, 0.22);
+}
+
+.initiative-card,
+.sponsor-card,
+.department-card,
+.calendar-card,
+.report-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 28, 47, 0.78);
+}
+
+.initiative-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.initiative-card:hover,
+.sponsor-card:hover,
+.department-card:hover,
+.calendar-card:hover,
+.report-card:hover {
+  border-color: rgba(36, 147, 255, 0.45);
+  background: rgba(16, 44, 70, 0.86);
+}
+
+.initiative-card small,
+.sponsor-card small,
+.department-card small,
+.calendar-card p,
+.report-card p {
+  color: var(--muted);
+}
+
+.initiative-card p,
+.sponsor-card p,
+.department-card p,
+.report-card p {
+  margin: 0;
+}
+
+.initiative-card div,
+.sponsor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.sponsor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sponsor-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-row span {
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: #cde8ff;
+  background: rgba(36, 147, 255, 0.13);
+  font-size: 11px;
+}
+
+.department-list,
+.timeline-list,
+.quick-action-list,
+.report-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.department-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+
+.calendar-card {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+}
+
+.calendar-card time {
+  color: #8cc9ff;
+  font-weight: 800;
+}
+
+.report-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.report-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.quick-action-list button {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #dcecff;
+  text-align: left;
+  background: rgba(8, 29, 48, 0.78);
+}
+
+.quick-action-list button:hover {
+  border-color: rgba(36, 147, 255, 0.5);
+  background: rgba(36, 147, 255, 0.12);
+}
+
 .vote {
   text-align: center !important;
   font-weight: 800;
@@ -1348,10 +1524,10 @@ h3 {
 .leg-drawer {
   position: fixed;
   z-index: 15;
-  top: 78px;
+  top: 236px;
   right: 24px;
   width: min(430px, calc(100vw - 32px));
-  max-height: calc(100vh - 104px);
+  max-height: calc(100vh - 260px);
   overflow: auto;
   border: 1px solid rgba(126, 185, 255, 0.28);
   border-radius: 8px;
@@ -1935,6 +2111,8 @@ h3 {
   .wide-right,
   .two-col,
   .leg-layout,
+  .sponsor-grid,
+  .report-grid,
   .media-layout,
   .media-metrics,
   .safety-grid,
@@ -1993,6 +2171,25 @@ h3 {
 
   .pipeline-labels {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .initiative-board {
+    grid-template-columns: repeat(5, 220px);
+  }
+
+  .department-card,
+  .calendar-card {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .inline-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .inline-actions button {
+    flex: 1;
   }
 
   .story-main {

@@ -104,7 +104,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=logout-20260605" strategy="afterInteractive" />
+      <Script src="/app.js?v=legislation-subsections-20260605" strategy="afterInteractive" />
     </>
   );
 }

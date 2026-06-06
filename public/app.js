@@ -49,6 +49,7 @@ const state = {
   },
   selectedStoryId: "story-development-center",
   selectedLegislationId: "",
+  legislationTab: "overview",
   legislationDetailOpen: true,
   drafts: [],
   completedActions: JSON.parse(localStorage.getItem("wardosCompletedActions") || "[]"),
@@ -1012,6 +1013,32 @@ const voteMatrixRows = [
   ["Public Comment Restoration", ["Yes", "Yes", "Yes", "Yes", "Yes", "Yes", "Yes"]],
 ];
 
+const legislationSponsors = [
+  { name: "James Ward", role: "Primary sponsor", alignment: 100, focus: "South Ward accountability, public comment, transparency", items: ["Public Comment Restoration", "Budget Accountability Measures", "Transparency Dashboard Initiatives"] },
+  { name: "Brittnee Timberlake", role: "Council sponsor", alignment: 78, focus: "Community development, education, constituent services", items: ["Tree Canopy Program", "Parking Reform"] },
+  { name: "Carlos Cruz", role: "Potential co-sponsor", alignment: 58, focus: "Planning, parking, zoning review", items: ["Parking Reform", "Scotland Road BID"] },
+  { name: "Mike Alves", role: "Frequent yes vote", alignment: 84, focus: "Public works, recreation, infrastructure", items: ["Tree Canopy Program", "Budget Accountability Measures"] },
+  { name: "Ted Green", role: "Needs briefing", alignment: 44, focus: "Fiscal review, mayoral coordination", items: ["Budget Accountability Measures"] },
+  { name: "Alfred Davis", role: "Swing vote", alignment: 63, focus: "Finance, public safety, implementation details", items: ["Parking Reform", "Tree Canopy Program"] },
+  { name: "Mayor Warren", role: "Administration", alignment: 68, focus: "Department execution and agenda movement", items: ["Budget Accountability Measures", "Transparency Dashboard Initiatives"] },
+];
+
+const legislativeDepartments = [
+  { name: "Planning & Zoning", queue: 12, owner: "Planning Board / Zoning Board", risk: "High", next: "Itemize agendas, development applications, and hearing outcomes" },
+  { name: "Finance", queue: 8, owner: "CFO / Administration", risk: "High", next: "Attach fiscal notes and line-item impacts" },
+  { name: "Public Works", queue: 9, owner: "DPW", risk: "Medium", next: "Connect road, tree, and infrastructure cases" },
+  { name: "Public Safety", queue: 6, owner: "Police / Fire / OEM", risk: "Medium", next: "Link ordinances to monthly public safety briefing signals" },
+  { name: "Recreation", queue: 4, owner: "Recreation Department", risk: "Low", next: "Track park, youth, and facility commitments" },
+  { name: "Council Rules", queue: 3, owner: "Council Clerk", risk: "High", next: "Track public comment, meeting procedure, and record access reforms" },
+];
+
+const legislativeCalendar = [
+  { date: "May 20, 2026", type: "Committee Hearing", title: "Tree Preservation Ordinance", body: "Planning & Zoning review, public comment expected.", status: "Prepare Questions" },
+  { date: "May 21, 2026", type: "Council Vote", title: "South Ward Traffic Calming Program", body: "Vote readiness and sponsor count needed.", status: "Build Support" },
+  { date: "May 22, 2026", type: "Finance Review", title: "Budget Accountability Measures", body: "Request fiscal note and implementation owner.", status: "Fiscal Note" },
+  { date: "Jun 3, 2026", type: "Committee Hearing", title: "Public Comment Restoration", body: "Council rules discussion and resident testimony.", status: "Talking Points" },
+];
+
 function normalizedLegislationRows() {
   const githubRows = (state.githubLegislation?.items || []).map((item, index) => ({
     id: `github-${item.id || index}`,
@@ -1101,6 +1128,7 @@ function legislationPage() {
   const detailRows = [...rows, ...legislativeInitiativeTemplates];
   const selected = detailRows.find((row) => row.id === state.selectedLegislationId) || rows[0] || legislativeInitiativeTemplates[0];
   state.selectedLegislationId = selected?.id || "";
+  const activeTab = state.legislationTab || "overview";
   return h`
     <div class="page-head leg-head">
       <div class="headline">
@@ -1113,7 +1141,16 @@ function legislationPage() {
       </div>
     </div>
     <div class="leg-tabs">
-      ${["Overview", "All Legislation", "My Initiatives", "Votes", "Sponsors", "Departments", "Calendar", "Reports"].map((tab, index) => `<button class="${index === 0 ? "active" : ""}">${tab}</button>`).join("")}
+      ${[
+        ["overview", "Overview"],
+        ["all", "All Legislation"],
+        ["initiatives", "My Initiatives"],
+        ["votes", "Votes"],
+        ["sponsors", "Sponsors"],
+        ["departments", "Departments"],
+        ["calendar", "Calendar"],
+        ["reports", "Reports"],
+      ].map(([key, label]) => `<button class="${activeTab === key ? "active" : ""}" data-leg-tab="${key}">${label}</button>`).join("")}
       <span class="select-button">Date Range: Last 12 Months</span>
     </div>
     <section class="grid metrics leg-metrics">
@@ -1124,6 +1161,20 @@ function legislationPage() {
       ${legMetric("Tabled", metrics.tabled, "Paused items that may return", "orange")}
       ${legMetric("My Initiatives", metrics.initiatives, "James Ward sponsored or championed ideas", "purple")}
     </section>
+    ${legislationTabContent(activeTab, rows)}
+    ${state.legislationDetailOpen ? legislationDetailDrawer(selected) : ""}
+  `;
+}
+
+function legislationTabContent(tab, rows) {
+  if (tab === "all") return allLegislationSection(rows);
+  if (tab === "initiatives") return initiativesSection();
+  if (tab === "votes") return votesSection(rows);
+  if (tab === "sponsors") return sponsorsSection();
+  if (tab === "departments") return departmentsSection(rows);
+  if (tab === "calendar") return calendarSection(rows);
+  if (tab === "reports") return reportsSection(rows);
+  return h`
     <section class="leg-layout">
       <main class="leg-main">
         <section class="grid two-col">
@@ -1139,8 +1190,256 @@ function legislationPage() {
         ${upcomingLegislativeActions(rows)}
       </aside>
     </section>
-    ${state.legislationDetailOpen ? legislationDetailDrawer(selected) : ""}
   `;
+}
+
+function allLegislationSection(rows) {
+  const visibleRows = rows.length ? rows : legislativeInitiativeTemplates.map((item) => ({ ...item, bill_number: item.type, source: "Initiative", progress: item.support, notes: item.nextAction }));
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>All Legislation</h2>
+            <div class="inline-actions">
+              <button class="secondary" data-open-draft="Legislation Filter">Filter</button>
+              <button class="primary" data-open-modal="legislation">New Legislation</button>
+            </div>
+          </div>
+          <div class="panel-body leg-table-wrap">
+            <table class="leg-table">
+              <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Committee</th><th>Sponsor</th><th>Next Action</th><th>Impact</th></tr></thead>
+              <tbody>
+                ${visibleRows.map((row) => `
+                  <tr data-legislation-id="${row.id}">
+                    <td><strong>${row.bill_number || row.type || "Draft"}</strong><small>${row.source || row.topic || "Tracked"}</small></td>
+                    <td><strong>${row.title}</strong><small>${row.notes || row.topic || "No source note yet"}</small></td>
+                    <td><span class="status ${statusClass(row.status)}">${row.status}</span></td>
+                    <td>${row.committee || "Council"}</td>
+                    <td>${row.sponsor || "James Ward / pending"}</td>
+                    <td>${row.nextAction || "Assign next step"}</td>
+                    <td><span class="status ${row.impact === "High" ? "hot" : "warn"}">${row.impact || "Medium"}</span></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("All Legislation")}
+        ${recentLegislativeActivity(visibleRows)}
+      </aside>
+    </section>
+  `;
+}
+
+function initiativesSection() {
+  const grouped = legislativeInitiativeTemplates.reduce((acc, item) => {
+    acc[item.status] = [...(acc[item.status] || []), item];
+    return acc;
+  }, {});
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header"><h2>Current Initiatives</h2><button class="primary" data-open-draft="New Ward Initiative">Add Initiative</button></div>
+          <div class="panel-body initiative-board">
+            ${["Research", "Ready for Review", "In Review", "In Committee", "In Progress"].map((status) => `
+              <div class="initiative-column">
+                <h3>${status}<small>${(grouped[status] || []).length}</small></h3>
+                ${(grouped[status] || []).map((item) => `
+                  <article class="initiative-card" data-legislation-id="${item.id}">
+                    <strong>${item.title}</strong>
+                    <small>${item.type} · ${item.committee}</small>
+                    <p>${item.nextAction}</p>
+                    <div><span class="status ${item.impact === "High" ? "hot" : "warn"}">${item.impact}</span><span>${item.support}% support</span></div>
+                  </article>
+                `).join("") || `<div class="empty small">No items</div>`}
+              </div>
+            `).join("")}
+          </div>
+        </section>
+        ${myInitiativesPanel()}
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("Initiatives")}
+        ${aiInsightsRail(legislativeInitiativeTemplates)}
+      </aside>
+    </section>
+  `;
+}
+
+function votesSection(rows) {
+  const voteStats = councilMembers.map((member, index) => {
+    const votes = voteMatrixRows.map(([, rowVotes]) => rowVotes[index]);
+    const yes = votes.filter((vote) => vote === "Yes").length;
+    const no = votes.filter((vote) => vote === "No").length;
+    const abstain = votes.filter((vote) => vote === "Abstain").length;
+    return { member, yes, no, abstain, alignment: Math.round((yes / Math.max(1, votes.length)) * 100) };
+  });
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        ${voteMatrixPanel()}
+        <section class="panel">
+          <div class="panel-header"><h2>Vote Alignment</h2><button class="link" data-open-draft="Vote Alignment Memo">Draft vote memo →</button></div>
+          <div class="panel-body sponsor-grid">
+            ${voteStats.map((item) => `
+              <article class="sponsor-card">
+                <strong>${item.member}</strong>
+                <p>${item.yes} yes · ${item.no} no · ${item.abstain} abstain</p>
+                <span class="support-bar wide"><i style="width:${item.alignment}%"></i></span>
+                <small>${item.alignment}% yes alignment on recent tracked votes</small>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("Votes")}
+        ${upcomingLegislativeActions(rows)}
+      </aside>
+    </section>
+  `;
+}
+
+function sponsorsSection() {
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header"><h2>Sponsors & Coalition Map</h2><button class="link" data-open-draft="Sponsor Outreach Plan">Create outreach plan →</button></div>
+          <div class="panel-body sponsor-grid">
+            ${legislationSponsors.map((sponsor) => `
+              <article class="sponsor-card">
+                <div class="sponsor-head">
+                  <strong>${sponsor.name}</strong>
+                  <span class="status ${sponsor.alignment >= 75 ? "good" : sponsor.alignment < 55 ? "hot" : "warn"}">${sponsor.alignment}%</span>
+                </div>
+                <p>${sponsor.role}</p>
+                <small>${sponsor.focus}</small>
+                <div class="tag-row">${sponsor.items.map((item) => `<span>${item}</span>`).join("")}</div>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("Sponsors")}
+        ${aiInsightsRail(legislativeInitiativeTemplates)}
+      </aside>
+    </section>
+  `;
+}
+
+function departmentsSection(rows) {
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header"><h2>Department Ownership</h2><button class="link" data-open-draft="Department Follow-up Log">Open follow-up log →</button></div>
+          <div class="panel-body department-list">
+            ${legislativeDepartments.map((dept) => `
+              <article class="department-card">
+                <span class="rank ${dept.risk === "High" ? "red" : dept.risk === "Medium" ? "orange" : "green"}">${dept.queue}</span>
+                <div>
+                  <strong>${dept.name}</strong>
+                  <p>${dept.owner}</p>
+                  <small>${dept.next}</small>
+                </div>
+                <span class="status ${dept.risk === "High" ? "hot" : dept.risk === "Medium" ? "warn" : "good"}">${dept.risk}</span>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("Departments")}
+        ${recentLegislativeActivity(rows)}
+      </aside>
+    </section>
+  `;
+}
+
+function calendarSection(rows) {
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header"><h2>Legislative Calendar</h2><button class="link" data-open-draft="Calendar Brief">Create calendar brief →</button></div>
+          <div class="panel-body timeline-list">
+            ${legislativeCalendar.map((item) => `
+              <article class="calendar-card">
+                <time>${item.date}</time>
+                <div>
+                  <strong>${item.title}</strong>
+                  <p>${item.type} · ${item.body}</p>
+                </div>
+                <button class="secondary" data-open-draft="${item.status}: ${item.title}">${item.status}</button>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${upcomingLegislativeActions(rows)}
+        ${legislationQuickActions("Calendar")}
+      </aside>
+    </section>
+  `;
+}
+
+function reportsSection(rows) {
+  return h`
+    <section class="leg-layout">
+      <main class="leg-main">
+        <section class="panel">
+          <div class="panel-header"><h2>Legislative Reports</h2><button class="primary" data-open-draft="Monthly Legislative Report">Generate Report</button></div>
+          <div class="panel-body report-grid">
+            ${[
+              ["Monthly Legislative Brief", "Council-ready summary of new items, votes, sponsor movement, and South Ward impacts."],
+              ["Sponsor Support Memo", "Who is aligned, persuadable, or needs a briefing before the next vote."],
+              ["Department Accountability Report", "Open follow-ups by Planning, Finance, DPW, Public Safety, and Council Rules."],
+              ["Resident Impact Digest", "Plain-language explanation of ordinances tied to cases, media, and development watch."],
+            ].map(([title, copy]) => `
+              <article class="report-card">
+                <strong>${title}</strong>
+                <p>${copy}</p>
+                <button class="secondary" data-open-draft="${title}">Open Draft</button>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </main>
+      <aside class="leg-right">
+        ${legislationQuickActions("Reports")}
+        ${legislativeInsights(rows)}
+      </aside>
+    </section>
+  `;
+}
+
+function legislationQuickActions(context) {
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>${context} Actions</h2></div>
+      <div class="panel-body quick-action-list">
+        <button data-open-modal="legislation">Add legislation item</button>
+        <button data-open-draft="${context} talking points">Draft talking points</button>
+        <button data-open-draft="${context} follow-up questions">Create follow-up questions</button>
+        <button data-open-draft="${context} resident summary">Write resident summary</button>
+      </div>
+    </section>
+  `;
+}
+
+function statusClass(status = "") {
+  const value = String(status).toLowerCase();
+  if (value.includes("pass") || value.includes("adopt") || value.includes("complete")) return "good";
+  if (value.includes("ready") || value.includes("vote")) return "warn";
+  if (value.includes("fail") || value.includes("withdraw")) return "hot";
+  return "";
 }
 
 function legMetric(label, value, detail, tone) {
@@ -2237,6 +2536,12 @@ function bindEvents() {
       state.mediaFilters.topic = button.dataset.mediaTopic;
       const firstMatch = mediaFilteredStories()[0];
       if (firstMatch) state.selectedStoryId = firstMatch.id;
+      render();
+    });
+  });
+  document.querySelectorAll("[data-leg-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.legislationTab = button.dataset.legTab;
       render();
     });
   });
