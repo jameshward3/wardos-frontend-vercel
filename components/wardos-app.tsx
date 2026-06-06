@@ -107,7 +107,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=events-reports-persistence-20260606" strategy="afterInteractive" />
+      <Script src="/app.js?v=hourly-weather-20260606" strategy="afterInteractive" />
     </>
   );
 }

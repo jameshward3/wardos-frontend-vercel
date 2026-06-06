@@ -96,6 +96,30 @@ const SEEDED_MEDIA_CONFIG = {
   ],
   intelligence_topics: ["Taxes", "Budget", "Redevelopment", "PILOT Agreements", "Public Safety", "Traffic", "Trees", "Parking", "Development", "Schools"],
 };
+const HOSTED_WEATHER_CODES: Record<number, [string, string]> = {
+  0: ["Sunny", "☀"],
+  1: ["Mostly Sunny", "🌤"],
+  2: ["Partly Cloudy", "⛅"],
+  3: ["Cloudy", "☁"],
+  45: ["Fog", "🌫"],
+  48: ["Fog", "🌫"],
+  51: ["Light Drizzle", "🌦"],
+  53: ["Drizzle", "🌦"],
+  55: ["Heavy Drizzle", "🌧"],
+  61: ["Light Rain", "🌦"],
+  63: ["Rain", "🌧"],
+  65: ["Heavy Rain", "🌧"],
+  71: ["Light Snow", "🌨"],
+  73: ["Snow", "🌨"],
+  75: ["Heavy Snow", "❄"],
+  80: ["Rain Showers", "🌦"],
+  81: ["Rain Showers", "🌧"],
+  82: ["Heavy Showers", "⛈"],
+  95: ["Thunderstorm", "⛈"],
+  96: ["Thunderstorm", "⛈"],
+  99: ["Thunderstorm", "⛈"],
+};
+const WEATHER_REFRESH_SECONDS = 3600;
 const CASE_FIELDS = [
   "id",
   "created_at",
@@ -734,6 +758,68 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function hostedWeatherFallback() {
+  const updatedAt = new Date().toISOString();
+  return {
+    ok: true,
+    from_cache: true,
+    location: "Orange, NJ",
+    temperature: 62,
+    high: 74,
+    low: 52,
+    condition: "Sunny",
+    symbol: "☀",
+    wind_mph: 8,
+    humidity: 45,
+    updated_at: updatedAt,
+    next_update_at: new Date(Date.now() + WEATHER_REFRESH_SECONDS * 1000).toISOString(),
+    refresh_interval_seconds: WEATHER_REFRESH_SECONDS,
+    source: "fallback",
+  };
+}
+
+async function hostedWeather() {
+  const url = (
+    "https://api.open-meteo.com/v1/forecast"
+    + "?latitude=40.7707&longitude=-74.2326"
+    + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+    + "&daily=temperature_2m_max,temperature_2m_min"
+    + "&temperature_unit=fahrenheit&wind_speed_unit=mph"
+    + "&timezone=America%2FNew_York&forecast_days=1"
+  );
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": "WardOS" },
+      next: { revalidate: WEATHER_REFRESH_SECONDS },
+    });
+    if (!response.ok) throw new Error(`Weather returned ${response.status}`);
+    const data = await response.json() as { current?: Record<string, number>; daily?: Record<string, number[]> };
+    const current = data.current || {};
+    const daily = data.daily || {};
+    const code = Number(current.weather_code || 0);
+    const [condition, symbol] = HOSTED_WEATHER_CODES[code] || ["Current Conditions", "◌"];
+    const updatedAt = new Date().toISOString();
+    return {
+      ok: true,
+      from_cache: false,
+      location: "Orange, NJ",
+      temperature: Math.round(Number(current.temperature_2m || 0)),
+      high: Math.round(Number((daily.temperature_2m_max || [0])[0] || 0)),
+      low: Math.round(Number((daily.temperature_2m_min || [0])[0] || 0)),
+      condition,
+      symbol,
+      wind_mph: Math.round(Number(current.wind_speed_10m || 0)),
+      humidity: Math.round(Number(current.relative_humidity_2m || 0)),
+      updated_at: updatedAt,
+      next_update_at: new Date(Date.now() + WEATHER_REFRESH_SECONDS * 1000).toISOString(),
+      refresh_interval_seconds: WEATHER_REFRESH_SECONDS,
+      source: "Open-Meteo",
+    };
+  } catch {
+    return hostedWeatherFallback();
+  }
+}
+
 function normalizePath(params: { path?: string[] }) {
   return `/${(params.path || []).join("/")}`;
 }
@@ -990,7 +1076,7 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
   if (route === "/media-monitor/config") return json(SEEDED_MEDIA_CONFIG);
   if (route === "/public-safety") return json(publicSafetyDashboard(store));
   if (route === "/weather/today") {
-    return json({ ok: true, location: "Orange, NJ", temperature: 62, high: 74, low: 52, condition: "Sunny", symbol: "☀" });
+    return json(await hostedWeather());
   }
   if (route.startsWith("/integrations/github/")) {
     const name = route.replace("/integrations/github/", "") as keyof typeof GITHUB_SOURCES;

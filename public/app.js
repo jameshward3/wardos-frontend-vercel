@@ -1,4 +1,5 @@
 const API_BASE = localStorage.getItem("wardosApiBase") || "/api";
+const WEATHER_REFRESH_MS = 60 * 60 * 1000;
 
 const routePageMap = {
   "/": "home",
@@ -250,6 +251,18 @@ async function refreshOperationalData() {
   state.drafts = state.officeActions.filter((action) => ["draft_follow_up", "note"].includes(action.action_type));
 }
 
+async function refreshWeather({ rerender = false } = {}) {
+  state.weather = await getJson("/weather/today", state.weather || weatherFallback());
+  if (rerender) render();
+}
+
+function startWeatherRefresh() {
+  if (window.wardosWeatherRefreshTimer) return;
+  window.wardosWeatherRefreshTimer = window.setInterval(() => {
+    refreshWeather({ rerender: true });
+  }, WEATHER_REFRESH_MS);
+}
+
 function showSaveError(error) {
   alert(`WardOS could not save this to the shared server. Check that the API is running, then try again.\n\n${error.message || error}`);
 }
@@ -294,9 +307,10 @@ async function loadData() {
   state.staffRoles = await getJson("/staff/roles", {});
   state.mediaStories = normalizeMediaStories(state.media.stories || (await getJson("/media-mentions", [])));
   if (state.mediaStories.length) state.selectedStoryId = String(state.mediaStories[0].id);
-  state.weather = await getJson("/weather/today", weatherFallback());
+  await refreshWeather();
   updateLastSyncLabel();
   render();
+  startWeatherRefresh();
 }
 
 function developmentWatchFallback() {
@@ -390,6 +404,7 @@ function titleCase(value) {
 }
 
 function weatherFallback() {
+  const updatedAt = new Date().toISOString();
   return {
     ok: true,
     from_cache: true,
@@ -401,7 +416,18 @@ function weatherFallback() {
     symbol: "☀",
     wind_mph: 8,
     humidity: 45,
+    updated_at: updatedAt,
+    next_update_at: new Date(Date.now() + WEATHER_REFRESH_MS).toISOString(),
+    refresh_interval_seconds: WEATHER_REFRESH_MS / 1000,
   };
+}
+
+function weatherUpdatedLabel(weather) {
+  const value = weather?.updated_at;
+  if (!value) return "Updates hourly";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Updates hourly";
+  return `Updated ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
 function budgetFallback() {
@@ -922,6 +948,7 @@ function homePage() {
           <div class="weather-range">
             <span>H ${weather.high ?? "--"}°</span>
             <span>L ${weather.low ?? "--"}°</span>
+            <span>${weatherUpdatedLabel(weather)}</span>
           </div>
         </section>
         <div>
