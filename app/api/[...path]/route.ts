@@ -13,6 +13,7 @@ type Store = {
   legislation: StoredRow[];
   budgetWatch: StoredRow[];
   officeActions: StoredRow[];
+  events: StoredRow[];
   mediaMentions: StoredRow[];
   publicSafetyIncidents: StoredRow[];
   sourceConnections: StoredRow[];
@@ -108,6 +109,18 @@ const CASE_FIELDS = [
   "notes",
   "latitude",
   "longitude",
+] as const;
+const EVENT_FIELDS = [
+  "id",
+  "created_at",
+  "title",
+  "starts_at",
+  "location",
+  "event_type",
+  "status",
+  "notes",
+  "source_url",
+  "source_id",
 ] as const;
 
 const CONSTITUENT_SUMMARY = {
@@ -418,6 +431,7 @@ function emptyStore(): Store {
     legislation: [],
     budgetWatch: [],
     officeActions: [],
+    events: [],
     mediaMentions: [],
     publicSafetyIncidents: [],
     sourceConnections: [],
@@ -530,6 +544,14 @@ function casesToCsv(rows: StoredRow[], includeBom = false) {
   return includeBom ? `\uFEFF${csv}` : csv;
 }
 
+function eventsToCsv(rows: StoredRow[], includeBom = false) {
+  const csv = [
+    EVENT_FIELDS.join(","),
+    ...rows.map((row) => EVENT_FIELDS.map((field) => csvEscape(row[field])).join(",")),
+  ].join("\n");
+  return includeBom ? `\uFEFF${csv}` : csv;
+}
+
 function parseCsvLine(line: string) {
   const values: string[] = [];
   let current = "";
@@ -568,11 +590,35 @@ function csvToCases(csv: string): StoredRow[] {
   });
 }
 
+function csvToEvents(csv: string): StoredRow[] {
+  const lines = csv.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0].replace(/^\uFEFF/, ""));
+  return lines.slice(1).map((line, index) => {
+    const values = parseCsvLine(line);
+    const row: Record<string, unknown> = {};
+    headers.forEach((header, headerIndex) => {
+      row[header] = values[headerIndex] || "";
+    });
+    const id = Number(row.id) || index + 1;
+    return { ...row, id, created_at: String(row.created_at || "") };
+  });
+}
+
 function githubCaseStorageConfig() {
   const repo = process.env.WARDOS_CASE_LOG_REPO?.trim();
   const token = process.env.WARDOS_CASE_LOG_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
   const branch = process.env.WARDOS_CASE_LOG_BRANCH?.trim() || "main";
   const filePath = process.env.WARDOS_CASE_LOG_PATH?.trim() || "data/constituent_cases.csv";
+  if (!repo || !token) return null;
+  return { repo, token, branch, filePath };
+}
+
+function githubEventStorageConfig() {
+  const repo = process.env.WARDOS_EVENT_LOG_REPO?.trim() || process.env.WARDOS_CASE_LOG_REPO?.trim();
+  const token = process.env.WARDOS_EVENT_LOG_TOKEN?.trim() || process.env.WARDOS_CASE_LOG_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  const branch = process.env.WARDOS_EVENT_LOG_BRANCH?.trim() || process.env.WARDOS_CASE_LOG_BRANCH?.trim() || "main";
+  const filePath = process.env.WARDOS_EVENT_LOG_PATH?.trim() || "data/events.csv";
   if (!repo || !token) return null;
   return { repo, token, branch, filePath };
 }
@@ -594,6 +640,25 @@ async function readGithubCases(): Promise<{ rows: StoredRow[]; sha?: string } | 
   const data = (await response.json()) as { content?: string; sha?: string };
   const content = Buffer.from(String(data.content || ""), "base64").toString("utf8");
   return { rows: csvToCases(content), sha: data.sha };
+}
+
+async function readGithubEvents(): Promise<{ rows: StoredRow[]; sha?: string } | null> {
+  const config = githubEventStorageConfig();
+  if (!config) return null;
+  const url = `https://api.github.com/repos/${config.repo}/contents/${encodeURIComponent(config.filePath).replace(/%2F/g, "/")}?ref=${encodeURIComponent(config.branch)}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "WardOS",
+    },
+    cache: "no-store",
+  });
+  if (response.status === 404) return { rows: [] };
+  if (!response.ok) throw new Error(`GitHub event log read failed: ${response.status}`);
+  const data = (await response.json()) as { content?: string; sha?: string };
+  const content = Buffer.from(String(data.content || ""), "base64").toString("utf8");
+  return { rows: csvToEvents(content), sha: data.sha };
 }
 
 async function writeGithubCases(rows: StoredRow[], sha?: string) {
@@ -620,10 +685,42 @@ async function writeGithubCases(rows: StoredRow[], sha?: string) {
   return true;
 }
 
+async function writeGithubEvents(rows: StoredRow[], sha?: string) {
+  const config = githubEventStorageConfig();
+  if (!config) return false;
+  const url = `https://api.github.com/repos/${config.repo}/contents/${encodeURIComponent(config.filePath).replace(/%2F/g, "/")}`;
+  const body: Record<string, unknown> = {
+    message: "Update WardOS event log",
+    content: Buffer.from(eventsToCsv(rows), "utf8").toString("base64"),
+    branch: config.branch,
+  };
+  if (sha) body.sha = sha;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "WardOS",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`GitHub event log write failed: ${response.status}`);
+  return true;
+}
+
 async function loadCases(store: Store) {
   const github = await readGithubCases();
   if (!github) return { rows: store.cases, sha: undefined, persistent: false };
   store.cases = github.rows;
+  store.nextId = Math.max(store.nextId, ...github.rows.map((row) => Number(row.id) + 1), 1);
+  return { rows: github.rows, sha: github.sha, persistent: true };
+}
+
+async function loadEvents(store: Store) {
+  const github = await readGithubEvents();
+  if (!github) return { rows: store.events, sha: undefined, persistent: false };
+  store.events = github.rows;
   store.nextId = Math.max(store.nextId, ...github.rows.map((row) => Number(row.id) + 1), 1);
   return { rows: github.rows, sha: github.sha, persistent: true };
 }
@@ -687,13 +784,14 @@ function dashboardOverview(store: Store) {
   const openCases = store.cases.filter((row) => row.status !== "closed");
   const seededMedia = store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS;
   const publicSafety = store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS;
+  const meetings = [...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || "")));
   return {
     sample_mode: false,
     metrics: {
       open_requests: openCases.length,
       constituents: CONSTITUENT_SUMMARY.total,
       mailin_voters: CONSTITUENT_SUMMARY.mailin_may_2026,
-      council_meetings: 171,
+      council_meetings: meetings.length,
       pending_legislation: store.legislation.length,
       development_projects: 87,
       media_mentions: seededMedia.length,
@@ -707,7 +805,7 @@ function dashboardOverview(store: Store) {
       priority: row.priority || "normal",
       created_at: row.created_at,
     })),
-    meetings: SEEDED_MEETINGS,
+    meetings,
     developments: SEEDED_DEVELOPMENTS,
     actions: store.officeActions.slice(-8).reverse(),
   };
@@ -791,6 +889,9 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
   if (route === "/dashboard/overview" || route === "/cases" || route === "/cases/export.csv") {
     await loadCases(store);
   }
+  if (route === "/dashboard/overview" || route === "/system/status" || route === "/events" || route === "/city-calendar" || route === "/council-meetings") {
+    await loadEvents(store);
+  }
 
   if (route === "/health") return json({ ok: true, mode: "hosted-fallback" });
   if (route === "/system/status") {
@@ -804,7 +905,7 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
         cases: store.cases.length,
         legislation: store.legislation.length,
         budget_watch: store.budgetWatch.length,
-        events: 171,
+        events: store.events.length + SEEDED_MEETINGS.length,
         development_projects: 87,
         media_mentions: (store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS).length,
         public_safety_incidents: (store.publicSafetyIncidents.length ? store.publicSafetyIncidents : SEEDED_PUBLIC_SAFETY_INCIDENTS).length,
@@ -863,6 +964,7 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
     });
   }
   if (route === "/office-actions") return json([...store.officeActions].reverse());
+  if (route === "/events") return json([...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || ""))));
   if (route === "/media-mentions") return json(store.mediaMentions.length ? [...store.mediaMentions].reverse() : SEEDED_MEDIA_MENTIONS);
   if (route === "/source-connections") return json(store.sourceConnections.length ? [...store.sourceConnections].reverse() : SEEDED_MEDIA_SOURCES);
   if (route === "/staff/users") return json(store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS);
@@ -898,7 +1000,8 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
     return json({ ok: false, error: `Unknown GitHub integration: ${name}` }, 404);
   }
   if (route === "/city-calendar" || route === "/council-meetings") {
-    return json({ source_url: "https://orangenj.gov/Calendar.aspx", fetched_at: "2026-06-04T22:10:52.036746-04:00", events: SEEDED_MEETINGS, meetings: SEEDED_MEETINGS });
+    const events = [...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || "")));
+    return json({ source_url: "https://orangenj.gov/Calendar.aspx", fetched_at: "2026-06-04T22:10:52.036746-04:00", events, meetings: events });
   }
   if (route === "/city-bulletins") {
     return json({
@@ -933,10 +1036,10 @@ export async function POST(request: NextRequest, context: { params: { path?: str
   if (route === "/cases") {
     const existingCases = await loadCases(store);
     row = createRow(store, { status: "open", priority: "normal", ...payload });
-    store.cases.push(row);
+    store.cases = [...existingCases.rows, row];
     if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);
-    return json({ id: row.id, status: "created", persistent: existingCases.persistent }, 201);
+    return json({ ...row, status: row.status || "created", persistent: existingCases.persistent }, 201);
   } else if (route === "/legislation") {
     row = createRow(store, { status: "tracking", ...payload });
     store.legislation.push(row);
@@ -946,6 +1049,13 @@ export async function POST(request: NextRequest, context: { params: { path?: str
   } else if (route === "/office-actions") {
     row = createRow(store, { status: "draft", priority: "normal", ...payload });
     store.officeActions.push(row);
+  } else if (route === "/events") {
+    const existingEvents = await loadEvents(store);
+    row = createRow(store, { status: "scheduled", event_type: "office_event", ...payload });
+    store.events = [...existingEvents.rows, row];
+    if (existingEvents.persistent) await writeGithubEvents(store.events, existingEvents.sha);
+    await writeStore(store);
+    return json({ ...row, persistent: existingEvents.persistent }, 201);
   } else if (route === "/media-mentions") {
     row = createRow(store, { sentiment: "neutral", ...payload });
     store.mediaMentions.push(row);

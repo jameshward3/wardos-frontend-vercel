@@ -56,6 +56,10 @@ WARDOS_CASE_LOG_REPO=
 WARDOS_CASE_LOG_TOKEN=
 WARDOS_CASE_LOG_BRANCH=main
 WARDOS_CASE_LOG_PATH=data/constituent_cases.csv
+WARDOS_EVENT_LOG_REPO=
+WARDOS_EVENT_LOG_TOKEN=
+WARDOS_EVENT_LOG_BRANCH=main
+WARDOS_EVENT_LOG_PATH=data/events.csv
 ```
 
 Do not hardcode passwords or OAuth secrets in the repo.
@@ -89,6 +93,14 @@ Download the Excel-readable hosted case log while signed in:
 ```text
 https://wardos.jw4o.com/api/cases/export.csv
 ```
+
+Manual events can use the same private data repository. If `WARDOS_EVENT_LOG_REPO` and `WARDOS_EVENT_LOG_TOKEN` are blank, WardOS falls back to `WARDOS_CASE_LOG_REPO` and `WARDOS_CASE_LOG_TOKEN`, writing events to:
+
+```env
+WARDOS_EVENT_LOG_PATH=data/events.csv
+```
+
+Set separate `WARDOS_EVENT_LOG_*` values only if you want events stored in a different private repository or path.
 
 ## Google Workspace Login
 
@@ -187,6 +199,7 @@ WARDOS_CASE_LOG_REPO=jameshward3/your-private-data-repo
 WARDOS_CASE_LOG_TOKEN=github-token-with-contents-read-write
 WARDOS_CASE_LOG_BRANCH=main
 WARDOS_CASE_LOG_PATH=data/constituent_cases.csv
+WARDOS_EVENT_LOG_PATH=data/events.csv
 ```
 
 7. Deploy the project.

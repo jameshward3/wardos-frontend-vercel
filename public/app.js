@@ -10,6 +10,8 @@ const routePageMap = {
   "/legislation": "legislation",
   "/budget": "budget",
   "/development": "development",
+  "/events": "events",
+  "/reports": "reports",
   "/settings": "settings",
 };
 
@@ -238,6 +240,7 @@ async function refreshOperationalData() {
   state.dashboardOverview = await getJson("/dashboard/overview", state.dashboardOverview || operationalOverviewFallback());
   state.priorityIssues = state.dashboardOverview.priority_issues || [];
   state.meetings = state.dashboardOverview.meetings || state.meetings;
+  state.meetings = await getJson("/events", state.meetings);
   state.developments = state.dashboardOverview.developments || state.developments;
   state.constituentSummary = await getJson("/constituents/summary", state.constituentSummary);
   state.cases = await getJson("/cases", state.cases);
@@ -273,6 +276,7 @@ async function loadData() {
   state.budget = await getJson("/budget-watch", []);
   state.priorityIssues = state.dashboardOverview.priority_issues || [];
   state.meetings = state.dashboardOverview.meetings || [];
+  state.meetings = await getJson("/events", state.meetings);
   state.developments = state.dashboardOverview.developments || [];
   state.developmentWatch = await getJson("/development-watch", state.developmentWatch || developmentWatchFallback());
   state.developments = await getJson("/development-projects", state.developments);
@@ -960,7 +964,10 @@ function dashboardPage() {
 
 function constituentsPage() {
   const summary = state.constituentSummary || {};
-  const mailinRows = filterRows(state.constituents, ["full_name", "street", "city", "ward", "voter_status"]);
+  const constituentKeys = ["full_name", "street_no", "street", "apt", "city", "state", "zip", "zip_code", "ward", "voter_status", "subgroup", "voter_id"];
+  const caseKeys = ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"];
+  const mailinRows = filterRows(state.constituents, constituentKeys);
+  const matchingCases = filterRows(state.cases, caseKeys);
   const primaryCase = state.cases[0];
   const primaryConstituent = mailinRows[0] || state.constituents[0];
   if (!primaryCase && !primaryConstituent) {
@@ -1011,12 +1018,13 @@ function constituentsPage() {
               ${metric(summary.outstanding || 0, "Outstanding", "Follow-up", "orange")}
             </div>
             <div class="panel-note">This subgroup is imported from the May 2026 South Ward mail-in voter list. No outreach is sent automatically.</div>
+            ${constituentCrossReference(mailinRows, matchingCases)}
             ${constituentRows(mailinRows)}
           </div>
         </section>
         <section class="panel">
           <div class="panel-header"><h2>Open Cases</h2><button class="primary" data-open-modal="case">Add Case</button></div>
-          <div class="panel-body list">${caseRows()}</div>
+          <div class="panel-body list">${caseRows(matchingCases)}</div>
         </section>
       </div>
       ${constituentSidePanel()}
@@ -1056,8 +1064,43 @@ function constituentDatalists() {
   `;
 }
 
-function caseRows() {
-  const rows = filterRows(state.cases, ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"]);
+function constituentCrossReference(constituents, cases) {
+  if (!state.search.trim()) {
+    return h`
+      <div class="panel-note">
+        Use the global search for names, addresses, streets, phone, email, case notes, and issue topics. Matches will stay on this page for fast cross-reference.
+      </div>
+    `;
+  }
+  return h`
+    <section class="mini-panel">
+      <div class="panel-header"><h3>Search Cross-Reference</h3><span class="muted">${constituents.length} residents · ${cases.length} cases</span></div>
+      <div class="grid two-col">
+        <div class="list">
+          <strong>Matching residents</strong>
+          ${constituents.slice(0, 5).map((row) => `
+            <div class="list-row">
+              <span><strong>${row.full_name}</strong><br><small class="muted">${row.street_no || ""} ${row.street || ""}${row.apt ? ` Apt ${row.apt}` : ""} · ${row.voter_status || "status pending"}</small></span>
+              <span></span><span class="status info">${row.ward || "Ward"}</span>
+            </div>
+          `).join("") || `<div class="empty small">No resident matches.</div>`}
+        </div>
+        <div class="list">
+          <strong>Matching needs</strong>
+          ${cases.slice(0, 5).map((row) => `
+            <div class="list-row">
+              <span><strong>${row.topic || "Constituent need"}</strong><br><small class="muted">${row.constituent_name || "Unknown"}${row.address_line ? ` · ${row.address_line}` : ""}</small></span>
+              <span></span><span class="status ${row.priority === "high" ? "hot" : "warn"}">${row.status || "open"}</span>
+            </div>
+          `).join("") || `<div class="empty small">No case matches.</div>`}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function caseRows(rows = null) {
+  rows = rows || filterRows(state.cases, ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"]);
   if (!rows.length) return `<div class="empty">No cases match this search.</div>`;
   return rows.map((row) => h`
     <div class="list-row">
@@ -2900,14 +2943,14 @@ function buildSearchIndex() {
     keywords: [item.notes, item.phone, item.email],
     action: { caseId: item.id, tab: "cases" },
   })));
-  state.constituents.slice(0, 300).forEach((item) => entries.push(searchEntry({
+  state.constituents.slice(0, 1000).forEach((item) => entries.push(searchEntry({
     section: "Constituents",
     type: item.subgroup || "Resident",
     title: item.full_name,
     summary: `${item.street_no || ""} ${item.street || ""} ${item.apt || ""} · ${item.ward || "Ward pending"} · ${item.voter_status || ""}`,
     page: "constituents",
     tone: "blue",
-    keywords: [item.voter_id, item.city, item.zip_code],
+    keywords: [item.voter_id, item.city, item.zip_code, item.zip, item.street_no, item.apt, item.subgroup],
     action: { tab: "mail-in voters" },
   })));
   normalizedLegislationRows().forEach((item) => entries.push(searchEntry({
@@ -2955,7 +2998,7 @@ function buildSearchIndex() {
     type: item.event_type || "Meeting",
     title: item.title,
     summary: `${item.starts_at ? new Date(item.starts_at).toLocaleString() : item.date || "Date pending"} · ${item.location || "Location pending"}`,
-    page: "briefing",
+    page: "events",
     tone: "orange",
     keywords: [item.status, item.notes, item.source_url],
   })));
@@ -3076,6 +3119,116 @@ function applySearchResult(page, action = {}) {
   render();
 }
 
+function eventTimeValue(row) {
+  const raw = row?.starts_at || row?.date || row?.created_at || "";
+  const time = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatEventDate(row) {
+  const raw = row?.starts_at || row?.date || "";
+  if (!raw) return "Date pending";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return String(raw).slice(0, 16);
+  return date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function isAttendedEvent(row) {
+  const status = String(row?.status || "").toLowerCase();
+  const type = String(row?.event_type || "").toLowerCase();
+  return status.includes("attended") || status.includes("completed") || type.includes("attended");
+}
+
+function eventRows(rows) {
+  if (!rows.length) return `<div class="empty">No events match this view.</div>`;
+  return rows.map((row) => h`
+    <article class="list-row">
+      <span><strong>${row.title || "Untitled event"}</strong><br><small class="muted">${formatEventDate(row)} · ${row.location || "Location pending"}</small></span>
+      <span><small class="muted">Type</small><br>${row.event_type || "event"}</span>
+      <span class="status ${isAttendedEvent(row) ? "good" : "info"}">${row.status || "scheduled"}</span>
+    </article>
+  `).join("");
+}
+
+function eventsPage() {
+  const now = Date.now();
+  const searched = filterRows(state.meetings || [], ["title", "location", "event_type", "status", "notes", "source_url"]);
+  const upcoming = searched.filter((row) => eventTimeValue(row) >= now || !eventTimeValue(row)).sort((a, b) => eventTimeValue(a) - eventTimeValue(b));
+  const past = searched.filter((row) => eventTimeValue(row) && eventTimeValue(row) < now).sort((a, b) => eventTimeValue(b) - eventTimeValue(a));
+  const attended = searched.filter(isAttendedEvent).sort((a, b) => eventTimeValue(b) - eventTimeValue(a));
+  return h`
+    <div class="page-head">
+      <div><h1>Events</h1><p class="muted">Manual entry for past and future office events, city meetings, attended appearances, and preparation notes.</p></div>
+      <button class="primary" data-open-modal="event">Add Event</button>
+    </div>
+    <section class="grid metrics">
+      ${metric(upcoming.length, "Upcoming", "Scheduled or tentative", "blue")}
+      ${metric(past.length, "Past Events", "Historical activity", "orange")}
+      ${metric(attended.length, "Attended", "Included in reports", "green")}
+      ${metric(searched.length, "All Events", "City + manual", "purple")}
+    </section>
+    <section class="grid two-col" style="margin-top:16px">
+      <section class="panel">
+        <div class="panel-header"><h2>Upcoming Events</h2><button class="secondary" data-open-draft="Upcoming Events Brief">Draft Brief</button></div>
+        <div class="panel-body list">${eventRows(upcoming)}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Attended & Completed</h2><button class="secondary" data-open-draft="Attended Events Report">Report Draft</button></div>
+        <div class="panel-body list">${eventRows(attended.length ? attended : past)}</div>
+      </section>
+    </section>
+    <section class="panel" style="margin-top:16px">
+      <div class="panel-header"><h2>All Event Records</h2><span class="muted">Search names, locations, notes, and event types from the top bar.</span></div>
+      <div class="panel-body list">${eventRows(searched)}</div>
+    </section>
+  `;
+}
+
+function reportsPage() {
+  const attended = (state.meetings || []).filter(isAttendedEvent).sort((a, b) => eventTimeValue(b) - eventTimeValue(a));
+  const cases = (state.cases || []).slice(0, 10);
+  const stories = mediaFilteredStories().slice(0, 5);
+  return h`
+    <div class="page-head">
+      <div><h1>Reports</h1><p class="muted">Build ward reports, staff summaries, attended-event logs, and briefing packets from persistent WardOS records.</p></div>
+      <button class="primary" data-open-draft="Ward Report">Create Report Draft</button>
+    </div>
+    <section class="grid metrics">
+      ${metric(attended.length, "Attended Events", "Ready for reports", "green")}
+      ${metric(cases.length, "Recent Cases", "Resident needs", "blue")}
+      ${metric(stories.length, "Media Signals", "Current pulse", "purple")}
+      ${metric(state.officeActions.length, "Staff Actions", "Drafts and logs", "orange")}
+    </section>
+    <section class="grid two-col" style="margin-top:16px">
+      <section class="panel">
+        <div class="panel-header"><h2>Attended Events Log</h2><button class="secondary" data-open-draft="Attended Events Log">Open Draft</button></div>
+        <div class="panel-body list">${eventRows(attended)}</div>
+      </section>
+      <section class="panel">
+        <div class="panel-header"><h2>Report Builders</h2></div>
+        <div class="panel-body report-grid">
+          ${[
+            ["Monthly Ward Report", "Cases, attended events, legislation, budget watch, public safety, and media pulse."],
+            ["Constituent Needs Report", "Open resident requests grouped by issue, street, status, and priority."],
+            ["Media and Pulse Brief", "Hourly media signals, alerts, topic movement, and recommended responses."],
+            ["Council Preparation Packet", "Meetings, legislation, development items, questions, and follow-ups."],
+          ].map(([title, copy]) => `
+            <article class="report-card">
+              <strong>${title}</strong>
+              <p>${copy}</p>
+              <button class="secondary" data-open-draft="${title}">Open Draft</button>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    </section>
+    <section class="grid two-col" style="margin-top:16px">
+      <section class="panel"><div class="panel-header"><h2>Recent Constituent Needs</h2></div><div class="panel-body list">${caseRows(cases)}</div></section>
+      <section class="panel"><div class="panel-header"><h2>Media Items for Briefing</h2></div><div class="panel-body list">${stories.map((story) => `<div class="list-row"><span><strong>${story.headline}</strong><br><small class="muted">${story.source} · ${story.topic}</small></span><span></span><span class="status ${sentimentClass(story.sentiment)}">${story.sentiment}</span></div>`).join("") || `<div class="empty">No media items match.</div>`}</div></section>
+    </section>
+  `;
+}
+
 function renderPage() {
   const routes = {
     home: homePage,
@@ -3087,9 +3240,9 @@ function renderPage() {
     development: developmentPage,
     projects: () => genericPage("Projects & DPW", "Track field work, DPW handoffs, service requests, and project follow-ups."),
     maps: () => genericPage("Maps", "Spatial view for issues, cases, developments, and service patterns."),
-    reports: () => genericPage("Reports", "Build ward reports, staff summaries, and briefing packets from local data."),
+    reports: reportsPage,
     progress: progressPage,
-    events: () => genericPage("Events", "Manage meeting calendars, public events, and staff preparation notes."),
+    events: eventsPage,
     media: mediaPage,
     publicSafety: publicSafetyPage,
     settings: settingsPage,
@@ -3261,6 +3414,7 @@ function openModal(type) {
   const titles = {
     quick: ["Quick Add", "Choose an Intake Type"],
     case: ["Manual Add", "New Constituent Need"],
+    event: ["Manual Add", "New Event"],
     legislation: ["Manual Add", "New Legislation Item"],
     budget: ["Manual Add", "New Budget Watch Item"],
     publicSafety: ["Manual Add", "New Public Safety Incident"],
@@ -3320,6 +3474,7 @@ function modalContent(type) {
     return h`
       <div class="action-grid">
         <button class="action-tile" data-open-modal="case"><strong>＋</strong><span>Add Request</span></button>
+        <button class="action-tile" data-open-modal="event"><strong>◫</strong><span>Add Event</span></button>
         <button class="action-tile" data-open-modal="legislation"><strong>▧</strong><span>Add Legislation</span></button>
         <button class="action-tile" data-open-modal="budget"><strong>▤</strong><span>Add Budget</span></button>
         <button class="action-tile" data-open-modal="publicSafety"><strong>◈</strong><span>Public Safety</span></button>
@@ -3353,6 +3508,20 @@ function modalContent(type) {
         <div class="field"><label>Status</label><input name="status" value="tracking"></div>
         <div class="field"><label>Notes</label><textarea name="notes" placeholder="Hearing date, sponsor, questions, missing source docs"></textarea></div>
         <button class="primary" type="submit">Add Legislation</button>
+      </form>
+    `;
+  }
+  if (type === "event") {
+    return h`
+      <form class="form-grid" id="eventForm">
+        <div class="field"><label>Event Title</label><input name="title" required placeholder="Community meeting, council hearing, site visit"></div>
+        <div class="field"><label>Date and Time</label><input name="starts_at" type="datetime-local"></div>
+        <div class="field"><label>Location</label><input name="location" placeholder="City Hall, South Ward address, virtual link"></div>
+        <div class="field"><label>Event Type</label><select name="event_type"><option value="office_event">Office Event</option><option value="meeting">Meeting</option><option value="community_event">Community Event</option><option value="attended_event">Attended Event</option><option value="city_event">City Event</option><option value="outreach">Outreach</option><option value="other">Other</option></select></div>
+        <div class="field"><label>Status</label><select name="status"><option>scheduled</option><option>tentative</option><option>attended</option><option>completed</option><option>cancelled</option></select></div>
+        <div class="field"><label>Source URL</label><input name="source_url" type="url" placeholder="Optional agenda, flyer, or calendar link"></div>
+        <div class="field"><label>Notes</label><textarea name="notes" placeholder="Purpose, attendees, follow-ups, departments, and report-ready summary"></textarea></div>
+        <button class="primary" type="submit">Save Event</button>
       </form>
     `;
   }
@@ -3403,6 +3572,12 @@ function bindModalForms(type) {
     case: async (form) => {
       const payload = Object.fromEntries(new FormData(form));
       await postJson("/cases", payload);
+      await refreshOperationalData();
+    },
+    event: async (form) => {
+      const payload = Object.fromEntries(new FormData(form));
+      if (!payload.starts_at) delete payload.starts_at;
+      await postJson("/events", payload);
       await refreshOperationalData();
     },
     legislation: async (form) => {

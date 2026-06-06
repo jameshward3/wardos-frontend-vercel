@@ -10,6 +10,8 @@ const pageMap: Record<string, string> = {
   legislation: "legislation",
   budget: "budget",
   development: "development",
+  events: "events",
+  reports: "reports",
   settings: "settings",
 };
 
@@ -105,7 +107,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=deep-search-20260606" strategy="afterInteractive" />
+      <Script src="/app.js?v=events-reports-persistence-20260606" strategy="afterInteractive" />
     </>
   );
 }
