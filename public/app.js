@@ -47,6 +47,7 @@ const state = {
     topic: "All Topics",
     sentiment: "All Sentiment",
   },
+  mediaTab: "overview",
   selectedStoryId: "story-development-center",
   selectedLegislationId: "",
   legislationTab: "overview",
@@ -2144,6 +2145,302 @@ function orangePulseMap() {
   `;
 }
 
+function sourceTypeStories(type) {
+  const aliases = {
+    news: ["News"],
+    social: ["Social Media", "Neighborhood Groups", "Community Organizations"],
+    broadcast: ["Broadcast"],
+  };
+  const allowed = aliases[type] || [];
+  return mediaFilteredStories().filter((story) => allowed.includes(story.type));
+}
+
+function mediaSourceCards(type) {
+  const stories = type ? sourceTypeStories(type) : mediaFilteredStories();
+  return h`
+    <section class="panel">
+      <div class="panel-header">
+        <h2>${type === "news" ? "Local News Desk" : type === "social" ? "Social Listening Desk" : type === "broadcast" ? "Broadcast Monitor" : "Mention Stream"}</h2>
+        <button class="primary" data-open-draft="${type || "All"} Media Follow-up">Create Follow-up</button>
+      </div>
+      <div class="panel-body media-card-grid">
+        ${stories.map((story) => mediaStoryCard(story)).join("") || `<div class="empty">No items match this source filter yet.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function mediaOverviewTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        ${mediaSourceSetupPanel()}
+        ${orangePulseMap()}
+        ${mediaFeed()}
+      </main>
+      ${mediaRightRail()}
+    </section>
+    ${externalInteractionSlots()}
+  `;
+}
+
+function mediaMentionsTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        <section class="grid two-col">
+          ${mediaMomentumPanel()}
+          ${sentimentShiftPanel()}
+        </section>
+        ${mediaFeed()}
+      </main>
+      ${mediaRightRail()}
+    </section>
+  `;
+}
+
+function mediaNewsTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        ${sourceBreakdownPanel("news")}
+        ${mediaSourceCards("news")}
+        ${storyBriefingQueue("News")}
+      </main>
+      <aside class="media-rail grid">
+        ${sourceWatchPanel("News Sources", ["Essex News Daily", "NJ.com Essex", "TAPinto East Orange / Orange", "Essex Review", "Patch"])}
+        ${mediaRightRail()}
+      </aside>
+    </section>
+  `;
+}
+
+function mediaSocialTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        ${sourceBreakdownPanel("social")}
+        ${orangePulseMap()}
+        ${mediaSourceCards("social")}
+      </main>
+      <aside class="media-rail grid">
+        ${sourceWatchPanel("Social Watch", ["Orange NJ Real Talk", "Seven Oaks Society", "Facebook Pages", "Instagram Hashtags", "X / Twitter Keywords"])}
+        ${communitySignalPanel()}
+      </aside>
+    </section>
+  `;
+}
+
+function mediaBroadcastTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        ${sourceBreakdownPanel("broadcast")}
+        <section class="panel">
+          <div class="panel-header"><h2>Broadcast & Video Clips</h2><button class="primary" data-open-draft="Broadcast Clip Intake">Add Clip</button></div>
+          <div class="panel-body broadcast-grid">
+            ${["Council meeting clips", "Local radio interviews", "Public comment video", "Community livestreams"].map((title, index) => `
+              <article class="broadcast-card">
+                <strong>${title}</strong>
+                <p>${index === 0 ? "Track mentions from council recordings and posted meeting video." : "Reserved intake lane for linked clips, transcripts, and AI summaries."}</p>
+                <button class="secondary" data-open-draft="${title}">Open Intake</button>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+        ${storyBriefingQueue("Broadcast")}
+      </main>
+      <aside class="media-rail grid">
+        ${sourceWatchPanel("Broadcast Sources", ["Council recordings", "Planning Board video", "Zoning Board video", "Local radio", "Community livestreams"])}
+        ${mediaRightRail()}
+      </aside>
+    </section>
+  `;
+}
+
+function mediaAlertsTab() {
+  const alerts = state.media?.alerts || [];
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        <section class="panel">
+          <div class="panel-header"><h2>Alert Center</h2><button class="primary" data-open-draft="Media Alert Protocol">Create Protocol</button></div>
+          <div class="panel-body alert-grid">
+            ${alerts.map(([title, body, level, tone]) => `
+              <article class="alert-card ${tone}">
+                <span class="rank ${tone}">!</span>
+                <div><strong>${title}</strong><p>${body}</p></div>
+                <button class="secondary" data-open-draft="${title} Response">${level}</button>
+              </article>
+            `).join("") || `<div class="empty">No active alerts yet.</div>`}
+          </div>
+        </section>
+        ${mediaMomentumPanel()}
+        ${storyBriefingQueue("Alert")}
+      </main>
+      ${mediaRightRail()}
+    </section>
+  `;
+}
+
+function mediaReportsTab() {
+  return h`
+    <section class="media-layout">
+      ${mediaLeftRail()}
+      <main class="media-center grid">
+        <section class="panel">
+          <div class="panel-header"><h2>Media Intelligence Reports</h2><button class="primary" data-open-draft="Daily Media Intelligence Report">Generate Report</button></div>
+          <div class="panel-body report-grid">
+            ${[
+              ["Daily Media Intelligence Brief", "What residents are talking about, what is gaining momentum, and recommended action."],
+              ["South Ward Sentiment Report", "Topic-by-topic sentiment trend, ward geography, and pressure points."],
+              ["Press Response Packet", "Draft statement, talking points, quotes, source links, and follow-up questions."],
+              ["Misinformation Risk Memo", "Claims needing verification, source history, likely spread path, and corrective response."],
+            ].map(([title, copy]) => `
+              <article class="report-card">
+                <strong>${title}</strong>
+                <p>${copy}</p>
+                <button class="secondary" data-open-draft="${title}">Open Draft</button>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+        ${storyBriefingQueue("Report")}
+      </main>
+      <aside class="media-rail grid">
+        ${mediaSourceSetupPanel()}
+        ${mediaRightRail()}
+      </aside>
+    </section>
+  `;
+}
+
+function mediaTabContent(tab) {
+  if (tab === "mentions") return mediaMentionsTab();
+  if (tab === "news") return mediaNewsTab();
+  if (tab === "social") return mediaSocialTab();
+  if (tab === "broadcast") return mediaBroadcastTab();
+  if (tab === "alerts") return mediaAlertsTab();
+  if (tab === "reports") return mediaReportsTab();
+  return mediaOverviewTab();
+}
+
+function mediaMomentumPanel() {
+  const topics = state.media?.topics?.length ? state.media.topics : configuredTopics().slice(0, 5).map(([label], index) => ({ label, share: 28 - index * 4 }));
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>Momentum Watch</h2><small class="muted">Emerging topic velocity</small></div>
+      <div class="panel-body list">
+        ${topics.slice(0, 6).map((topic, index) => `
+          <button class="list-row ghost" data-media-topic="${topic.label || topic[0]}">
+            <span class="rank ${index < 2 ? "orange" : "blue"}">${index + 1}</span>
+            <span><strong>${topic.label || topic[0]}</strong><br><small class="muted">Mentions gaining across monitored sources</small></span>
+            <span class="status">${topic.share || topic[1]}%</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function sentimentShiftPanel() {
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>Sentiment Shifts</h2><span class="green">↗ improving</span></div>
+      <div class="panel-body">
+        <div class="sentiment-meter"><span></span></div>
+        <div class="budget-row"><span>Negative spike risk</span><strong class="orange">Medium</strong><span></span></div>
+        <div class="budget-row"><span>Resident concern level</span><strong>High</strong><span></span></div>
+        <div class="budget-row"><span>Response window</span><strong class="blue">Today</strong><span></span></div>
+      </div>
+    </section>
+  `;
+}
+
+function sourceBreakdownPanel(type) {
+  const labels = {
+    news: ["News Articles", sourceTypeStories("news").length, "RSS/web sources and local outlets"],
+    social: ["Social Mentions", sourceTypeStories("social").length, "Groups, pages, hashtags, and public posts"],
+    broadcast: ["Broadcast Clips", sourceTypeStories("broadcast").length, "Video, radio, livestreams, and transcripts"],
+  }[type] || ["Mentions", mediaFilteredStories().length, "All monitored signals"];
+  return h`
+    <section class="grid metrics">
+      ${metric(labels[1], labels[0], labels[2], type === "social" ? "green" : type === "broadcast" ? "purple" : "blue")}
+      ${metric(mediaFilteredStories().filter((story) => story.sentiment === "Negative").length, "Negative Items", "Needs review", "red")}
+      ${metric(mediaFilteredStories().filter((story) => story.interest === "High").length, "High Interest", "Likely resident visibility", "orange")}
+    </section>
+  `;
+}
+
+function sourceWatchPanel(title, sources) {
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>${title}</h2><button class="link" data-open-draft="${title} Setup">Edit</button></div>
+      <div class="panel-body list">
+        ${sources.map((source, index) => `
+          <div class="list-row compact">
+            <span class="rank ${index < 2 ? "green" : "blue"}">${index + 1}</span>
+            <span><strong>${source}</strong><br><small class="muted">${index < 2 ? "Priority watch source" : "Configured intake lane"}</small></span>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function communitySignalPanel() {
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>Community Signals</h2></div>
+      <div class="panel-body check-list">
+        <span>Neighborhood group discussion rising around roads and development.</span>
+        <span>Seven Oaks / South Ward location tags should be geocoded to Orange Pulse.</span>
+        <span>Manual review required before any public response is sent.</span>
+      </div>
+    </section>
+  `;
+}
+
+function storyBriefingQueue(context) {
+  const stories = mediaFilteredStories().slice(0, 4);
+  return h`
+    <section class="panel">
+      <div class="panel-header"><h2>${context} Briefing Queue</h2><button class="link" data-open-draft="${context} Briefing Queue">View all →</button></div>
+      <div class="panel-body list">
+        ${stories.map((story) => `
+          <button class="list-row ghost" data-story-id="${story.id}">
+            <span class="source-logo">${story.logo}</span>
+            <span><strong>${story.headline}</strong><br><small class="muted">${story.source} · ${story.topic} · ${story.geo}</small></span>
+            <span class="status ${sentimentClass(story.sentiment)}">${story.sentiment}</span>
+          </button>
+        `).join("") || `<div class="empty">No stories queued yet.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function externalInteractionSlots() {
+  return h`
+    <section class="panel" style="margin-top:16px">
+      <div class="panel-header"><h2>External Interaction Slots</h2></div>
+      <div class="panel-body action-grid">
+        <button class="action-tile" data-open-draft="Email Follow-up Queue"><strong>✉</strong><span>Email draft queue</span></button>
+        <button class="action-tile" data-open-draft="Social Response Review"><strong>↗</strong><span>Social post review</span></button>
+        <button class="action-tile" data-open-draft="Press Clipping Import"><strong>▣</strong><span>Press clipping import</span></button>
+        <button class="action-tile" data-open-draft="Forum Monitoring Source"><strong>◍</strong><span>Neighborhood forums</span></button>
+        <button class="action-tile" data-open-draft="Meeting Transcript Intake"><strong>≋</strong><span>Transcript intake</span></button>
+        <button class="action-tile" data-open-draft="Misinformation Watch"><strong>!</strong><span>Misinformation watch</span></button>
+      </div>
+    </section>
+  `;
+}
+
 function sentimentClass(sentiment) {
   if (sentiment === "Positive") return "good";
   if (sentiment === "Negative") return "hot";
@@ -2151,6 +2448,7 @@ function sentimentClass(sentiment) {
 }
 
 function mediaPage() {
+  const activeTab = state.mediaTab || "overview";
   return h`
     <div class="page-head media-title">
       <div class="headline">
@@ -2167,7 +2465,15 @@ function mediaPage() {
       </div>
     </div>
     <div class="tabs media-tabs">
-      ${["Overview", "Mentions", "News", "Social Media", "Broadcast", "Alerts", "Reports"].map((tab, index) => `<button class="tab ${index === 0 ? "active" : ""}">${tab}</button>`).join("")}
+      ${[
+        ["overview", "Overview"],
+        ["mentions", "Mentions"],
+        ["news", "News"],
+        ["social", "Social Media"],
+        ["broadcast", "Broadcast"],
+        ["alerts", "Alerts"],
+        ["reports", "Reports"],
+      ].map(([key, label]) => `<button class="tab ${activeTab === key ? "active" : ""}" data-media-tab="${key}">${label}</button>`).join("")}
     </div>
     <section class="grid media-metrics">
       ${metric(152, "Total Mentions", "↑ 18% vs yesterday", "purple")}
@@ -2176,26 +2482,7 @@ function mediaPage() {
       ${metric("1.2M", "Potential Reach", "↑ 15% vs yesterday", "orange")}
       ${metric("+0.32", "Sentiment Score", "Positive", "green")}
     </section>
-    <section class="media-layout">
-      ${mediaLeftRail()}
-      <main class="media-center grid">
-        ${mediaSourceSetupPanel()}
-        ${orangePulseMap()}
-        ${mediaFeed()}
-      </main>
-      ${mediaRightRail()}
-    </section>
-    <section class="panel" style="margin-top:16px">
-      <div class="panel-header"><h2>External Interaction Slots</h2></div>
-      <div class="panel-body action-grid">
-        <button class="action-tile" data-open-draft="Email Follow-up Queue"><strong>✉</strong><span>Email draft queue</span></button>
-        <button class="action-tile" data-open-draft="Social Response Review"><strong>↗</strong><span>Social post review</span></button>
-        <button class="action-tile" data-open-draft="Press Clipping Import"><strong>▣</strong><span>Press clipping import</span></button>
-        <button class="action-tile" data-open-draft="Forum Monitoring Source"><strong>◍</strong><span>Neighborhood forums</span></button>
-        <button class="action-tile" data-open-draft="Meeting Transcript Intake"><strong>≋</strong><span>Transcript intake</span></button>
-        <button class="action-tile" data-open-draft="Misinformation Watch"><strong>!</strong><span>Misinformation watch</span></button>
-      </div>
-    </section>
+    ${mediaTabContent(activeTab)}
   `;
 }
 
@@ -2536,6 +2823,12 @@ function bindEvents() {
       state.mediaFilters.topic = button.dataset.mediaTopic;
       const firstMatch = mediaFilteredStories()[0];
       if (firstMatch) state.selectedStoryId = firstMatch.id;
+      render();
+    });
+  });
+  document.querySelectorAll("[data-media-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.mediaTab = button.dataset.mediaTab;
       render();
     });
   });

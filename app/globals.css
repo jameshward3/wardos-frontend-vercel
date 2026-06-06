@@ -1580,6 +1580,57 @@ h3 {
   padding: 0;
 }
 
+.media-card-grid,
+.broadcast-grid,
+.alert-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.media-card-grid {
+  grid-template-columns: 1fr;
+}
+
+.broadcast-grid,
+.alert-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.broadcast-card,
+.alert-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 28, 47, 0.78);
+}
+
+.broadcast-card:hover,
+.alert-card:hover {
+  border-color: rgba(36, 147, 255, 0.45);
+  background: rgba(16, 44, 70, 0.86);
+}
+
+.broadcast-card p,
+.alert-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.alert-card {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.alert-card.red {
+  border-color: rgba(255, 78, 67, 0.3);
+}
+
+.alert-card.orange {
+  border-color: rgba(255, 148, 31, 0.3);
+}
+
 .media-metrics {
   grid-template-columns: repeat(5, minmax(130px, 1fr));
   margin-bottom: 16px;
@@ -2115,6 +2166,8 @@ h3 {
   .report-grid,
   .media-layout,
   .media-metrics,
+  .broadcast-grid,
+  .alert-grid,
   .safety-grid,
   .safety-bottom,
   .safety-metrics {
@@ -2202,6 +2255,11 @@ h3 {
 
   .story-actions {
     padding-left: 14px;
+  }
+
+  .alert-card {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .relationship-graph {
