@@ -2877,6 +2877,205 @@ function filterRows(rows, keys) {
   return rows.filter((row) => keys.some((key) => String(row[key] || "").toLowerCase().includes(q)));
 }
 
+function searchText(value) {
+  if (Array.isArray(value)) return value.map(searchText).join(" ");
+  if (value && typeof value === "object") return Object.values(value).map(searchText).join(" ");
+  return String(value || "");
+}
+
+function searchEntry({ section, type, title, summary, page, tone = "blue", keywords = [], action = {} }) {
+  const text = searchText([section, type, title, summary, keywords, action]);
+  return { section, type, title: title || "Untitled", summary: summary || "", page, tone, keywords, action, text: text.toLowerCase() };
+}
+
+function buildSearchIndex() {
+  const entries = [];
+  state.cases.forEach((item) => entries.push(searchEntry({
+    section: "Constituents",
+    type: item.priority || "Case",
+    title: item.topic || "Constituent case",
+    summary: `${item.constituent_name || "Unknown"} · ${item.address_line || "No address"} · ${item.status || "open"}`,
+    page: "constituents",
+    tone: item.priority === "high" ? "red" : "green",
+    keywords: [item.notes, item.phone, item.email],
+    action: { caseId: item.id, tab: "cases" },
+  })));
+  state.constituents.slice(0, 300).forEach((item) => entries.push(searchEntry({
+    section: "Constituents",
+    type: item.subgroup || "Resident",
+    title: item.full_name,
+    summary: `${item.street_no || ""} ${item.street || ""} ${item.apt || ""} · ${item.ward || "Ward pending"} · ${item.voter_status || ""}`,
+    page: "constituents",
+    tone: "blue",
+    keywords: [item.voter_id, item.city, item.zip_code],
+    action: { tab: "mail-in voters" },
+  })));
+  normalizedLegislationRows().forEach((item) => entries.push(searchEntry({
+    section: "Legislation",
+    type: item.status || "Tracking",
+    title: `${item.bill_number || "Draft"} · ${item.title}`,
+    summary: `${item.committee || "Council"} · ${item.nextAction || item.notes || "Review source"}`,
+    page: "legislation",
+    tone: item.impact === "High" ? "purple" : "blue",
+    keywords: [item.topic, item.sponsor, item.source],
+    action: { legislationId: item.id, legislationTab: "all" },
+  })));
+  legislativeInitiativeTemplates.forEach((item) => entries.push(searchEntry({
+    section: "Initiatives",
+    type: item.status,
+    title: item.title,
+    summary: `${item.committee} · ${item.nextAction} · ${item.support}% support`,
+    page: "legislation",
+    tone: "purple",
+    keywords: [item.topic, item.type, item.impact],
+    action: { legislationId: item.id, legislationTab: "initiatives" },
+  })));
+  mediaFilteredStories().forEach((item) => entries.push(searchEntry({
+    section: "Media",
+    type: item.sentiment || "Mention",
+    title: item.headline,
+    summary: `${item.source} · ${item.topic} · ${item.geo} · reach ${item.reach || item.engagement || "pending"}`,
+    page: "media",
+    tone: sentimentClass(item.sentiment),
+    keywords: [item.summary, item.fullSummary, item.entities, item.quotes],
+    action: { storyId: item.id, mediaTab: "mentions" },
+  })));
+  developmentProjectMapItems().forEach((item) => entries.push(searchEntry({
+    section: "Development",
+    type: item.project_type || "Project",
+    title: item.name,
+    summary: `${item.address || "Address pending"} · ${item.board || "Board source"} · ${item.dateLabel}`,
+    page: "development",
+    tone: String(item.board || "").includes("Planning") ? "blue" : "purple",
+    keywords: [item.status, item.geocode_status, item.source_url],
+    action: { sourceUrl: item.source_url },
+  })));
+  (state.meetings || []).forEach((item) => entries.push(searchEntry({
+    section: "Meetings",
+    type: item.event_type || "Meeting",
+    title: item.title,
+    summary: `${item.starts_at ? new Date(item.starts_at).toLocaleString() : item.date || "Date pending"} · ${item.location || "Location pending"}`,
+    page: "briefing",
+    tone: "orange",
+    keywords: [item.status, item.notes, item.source_url],
+  })));
+  (state.budget || []).forEach((item) => entries.push(searchEntry({
+    section: "Budget",
+    type: item.status || "Watch",
+    title: `${item.department || "Department"} · ${item.line_item || "Budget item"}`,
+    summary: `${item.fiscal_year || "FY"} · ${item.concern || "Review"}`,
+    page: "budget",
+    tone: "green",
+    keywords: [item.notes],
+  })));
+  ((state.publicSafety && state.publicSafety.incidents) || []).forEach((item) => entries.push(searchEntry({
+    section: "Public Safety",
+    type: item.severity || item.category || "Incident",
+    title: item.title,
+    summary: `${item.location || "South Ward"} · ${item.category_label || item.category || "Incident"} · ${item.status || "reported"}`,
+    page: "publicSafety",
+    tone: publicSafetyTone(item.category, item.severity),
+    keywords: [item.notes, item.source_file],
+  })));
+  state.officeActions.forEach((item) => entries.push(searchEntry({
+    section: "Actions",
+    type: item.status || "Action",
+    title: item.title,
+    summary: `${item.owner || "Unassigned"} · ${item.priority || "normal"} · ${item.notes || "No notes"}`,
+    page: "dashboard",
+    tone: item.priority === "high" ? "red" : "blue",
+    keywords: [item.action_type, item.source_type],
+  })));
+  configuredTopics().forEach(([topic, , tone]) => entries.push(searchEntry({
+    section: "Topic",
+    type: "Saved search",
+    title: topic,
+    summary: "Filter media, cases, legislation, and development signals by this issue.",
+    page: "media",
+    tone,
+    keywords: [topic],
+    action: { mediaTopic: topic, mediaTab: "mentions" },
+  })));
+  return entries;
+}
+
+function scoreSearchEntry(entry, terms) {
+  return terms.reduce((score, term) => {
+    if (!term) return score;
+    const title = entry.title.toLowerCase();
+    const section = entry.section.toLowerCase();
+    if (title === term) return score + 90;
+    if (title.startsWith(term)) score += 35;
+    if (title.includes(term)) score += 22;
+    if (section.includes(term)) score += 12;
+    if (entry.text.includes(term)) score += 8;
+    return score;
+  }, 0);
+}
+
+function globalSearchResults(query = state.search) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  const terms = q.split(/\s+/).filter(Boolean);
+  return buildSearchIndex()
+    .map((entry) => ({ ...entry, score: scoreSearchEntry(entry, terms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, 10);
+}
+
+function renderSearchPanel() {
+  const panel = document.getElementById("globalSearchPanel");
+  if (!panel) return;
+  const query = state.search.trim();
+  if (!query) {
+    panel.classList.remove("open");
+    panel.innerHTML = "";
+    return;
+  }
+  const results = globalSearchResults(query);
+  const grouped = results.reduce((acc, item) => {
+    acc[item.section] = [...(acc[item.section] || []), item];
+    return acc;
+  }, {});
+  panel.classList.add("open");
+  panel.innerHTML = h`
+    <div class="search-panel-head">
+      <strong>Deep Search</strong>
+      <small>${results.length ? `${results.length} matches` : "No matches yet"}</small>
+    </div>
+    ${results.length ? Object.entries(grouped).map(([section, rows]) => `
+      <section class="search-group">
+        <h3>${section}</h3>
+        ${rows.map((row) => `
+          <button class="search-result" data-search-result="${row.page}" data-search-action='${JSON.stringify(row.action || {}).replace(/'/g, "&apos;")}'>
+            <span class="rank ${row.tone}">${section.slice(0, 1)}</span>
+            <span><strong>${row.title}</strong><small>${row.type} · ${row.summary}</small></span>
+          </button>
+        `).join("")}
+      </section>
+    `).join("") : `<div class="empty small">Try a resident name, address, ordinance, source, topic, department, or board item.</div>`}
+    <div class="search-tips">
+      <span>Try: “parking”, “Ward Street”, “tree”, “budget”, “Zoning”, “public safety”</span>
+    </div>
+  `;
+}
+
+function applySearchResult(page, action = {}) {
+  if (action.tab) state.tab = action.tab;
+  if (action.legislationTab) state.legislationTab = action.legislationTab;
+  if (action.legislationId) {
+    state.selectedLegislationId = action.legislationId;
+    state.legislationDetailOpen = true;
+  }
+  if (action.mediaTab) state.mediaTab = action.mediaTab;
+  if (action.storyId) state.selectedStoryId = action.storyId;
+  if (action.mediaTopic) state.mediaFilters.topic = action.mediaTopic;
+  state.page = page || state.page;
+  setMobileNav(false);
+  render();
+}
+
 function renderPage() {
   const routes = {
     home: homePage,
@@ -2902,6 +3101,7 @@ function renderPage() {
 function render() {
   renderNav();
   renderPage();
+  renderSearchPanel();
   bindEvents();
   initOpenMaps();
 }
@@ -2931,6 +3131,12 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-open-draft]").forEach((button) => {
     button.addEventListener("click", () => openDraft(button.dataset.openDraft));
+  });
+  document.querySelectorAll("[data-search-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.searchAction ? JSON.parse(button.dataset.searchAction) : {};
+      applySearchResult(button.dataset.searchResult, action);
+    });
   });
   document.querySelectorAll("[data-action]").forEach((input) => {
     input.addEventListener("change", () => {
@@ -3284,7 +3490,28 @@ document.getElementById("modalBackdrop").addEventListener("click", (event) => {
 document.getElementById("globalSearch").addEventListener("input", (event) => {
   state.search = event.target.value;
   renderPage();
+  renderSearchPanel();
   bindEvents();
+  initOpenMaps();
+});
+document.getElementById("globalSearch").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    state.search = "";
+    event.target.value = "";
+    renderPage();
+    renderSearchPanel();
+    bindEvents();
+    initOpenMaps();
+  }
+  if (event.key === "Enter") {
+    const top = globalSearchResults(event.target.value)[0];
+    if (top) applySearchResult(top.page, top.action);
+  }
+});
+document.addEventListener("click", (event) => {
+  const panel = document.getElementById("globalSearchPanel");
+  const search = document.querySelector(".search");
+  if (panel && search && !search.contains(event.target)) panel.classList.remove("open");
 });
 
 loadData();

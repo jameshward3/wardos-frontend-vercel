@@ -66,7 +66,8 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
             <span id="lastSyncLabel">Last Sync: Loading</span>
             <label className="search">
               <span>⌕</span>
-              <input id="globalSearch" type="search" placeholder="Search WardOS..." />
+              <input id="globalSearch" type="search" placeholder="Search WardOS..." autoComplete="off" aria-controls="globalSearchPanel" />
+              <div id="globalSearchPanel" className="search-panel" aria-label="WardOS search results" />
             </label>
             <button className="icon-button" title="Notifications">
               ⌁<b>3</b>
@@ -104,7 +105,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=development-map-20260606" strategy="afterInteractive" />
+      <Script src="/app.js?v=deep-search-20260606" strategy="afterInteractive" />
     </>
   );
 }
