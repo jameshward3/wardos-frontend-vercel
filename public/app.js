@@ -2131,6 +2131,19 @@ function mediaFilteredStories() {
   });
 }
 
+function orangeNewsScore(story) {
+  const text = [story.source, story.headline, story.summary, story.fullSummary, story.topic, story.geo, story.entities]
+    .flat()
+    .join(" ")
+    .toLowerCase();
+  const terms = ["city of orange township", "orange township", "orange, nj", "orange nj", "south ward", "central ave", "scotland road", "south center"];
+  return terms.reduce((score, term) => score + (text.includes(term) ? 1 : 0), 0);
+}
+
+function orangeFirstStories(stories) {
+  return [...stories].sort((a, b) => orangeNewsScore(b) - orangeNewsScore(a));
+}
+
 function selectedStory() {
   return (state.mediaStories || []).find((story) => story.id === state.selectedStoryId) || (state.mediaStories || [])[0] || null;
 }
@@ -2362,7 +2375,8 @@ function sourceTypeStories(type) {
     broadcast: ["Broadcast"],
   };
   const allowed = aliases[type] || [];
-  return mediaFilteredStories().filter((story) => allowed.includes(story.type));
+  const stories = mediaFilteredStories().filter((story) => allowed.includes(story.type));
+  return type === "news" ? orangeFirstStories(stories) : stories;
 }
 
 function mediaSourceCards(type) {
@@ -2421,7 +2435,7 @@ function mediaNewsTab() {
         ${storyBriefingQueue("News")}
       </main>
       <aside class="media-rail grid">
-        ${sourceWatchPanel("News Sources", ["East Orange Record Transcript", "Essex News Daily", "NJ.com Essex", "TAPinto East Orange / Orange", "Essex Review", "Patch"])}
+        ${sourceWatchPanel("News Sources", ["Local Talk Weekly", "Essex Review", "East Orange Record Transcript", "Essex News Daily", "NJ.com Essex", "TAPinto East Orange / Orange", "Patch"])}
         ${mediaRightRail()}
       </aside>
     </section>
@@ -2618,7 +2632,7 @@ function communitySignalPanel() {
 }
 
 function storyBriefingQueue(context) {
-  const stories = mediaFilteredStories().slice(0, 4);
+  const stories = (context === "News" ? orangeFirstStories(mediaFilteredStories()) : mediaFilteredStories()).slice(0, 4);
   return h`
     <section class="panel">
       <div class="panel-header"><h2>${context} Briefing Queue</h2><button class="link" data-open-draft="${context} Briefing Queue">View all →</button></div>
