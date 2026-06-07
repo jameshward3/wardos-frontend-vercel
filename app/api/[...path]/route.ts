@@ -82,10 +82,21 @@ const SEEDED_MEDIA_SOURCES = [
     notes: JSON.stringify({ priority: "critical", category: "orange,essex_county" }),
     created_at: "2026-06-03T00:00:00.000Z",
   },
+  {
+    id: 7,
+    name: "East Orange Record Transcript",
+    source_type: "news",
+    url: "https://essexnewsdaily.com/category/news/eastorange/feed",
+    enabled: true,
+    status: "configured",
+    notes: JSON.stringify({ priority: "critical", category: "east_orange,orange,essex_county", source_url: "https://essexnewsdaily.com/category/news/eastorange/" }),
+    created_at: "2026-06-06T00:00:00.000Z",
+  },
 ];
 const SEEDED_MEDIA_CONFIG = {
   local_news: [
     { name: "Essex News Daily", type: "news", priority: "critical", url: "https://essexnewsdaily.com/", rss: "https://essexnewsdaily.com/feed" },
+    { name: "East Orange Record Transcript", type: "news", priority: "critical", url: "https://essexnewsdaily.com/category/news/eastorange/", rss: "https://essexnewsdaily.com/category/news/eastorange/feed" },
     { name: "NJ.com", type: "news", priority: "high", url: "https://www.nj.com/" },
     { name: "NJ.com Essex County", type: "news", priority: "critical", url: "https://www.nj.com/essex" },
     { name: "Essex Review", type: "news", priority: "critical", url: "https://essexreview.com/" },
@@ -897,6 +908,15 @@ function dashboardOverview(store: Store) {
   };
 }
 
+function mergedSourceConnections(store: Store) {
+  const rows = store.sourceConnections.length ? [...store.sourceConnections] : [];
+  const names = new Set(rows.map((row) => String(row.name || "").toLowerCase()));
+  SEEDED_MEDIA_SOURCES.forEach((source) => {
+    if (!names.has(String(source.name).toLowerCase())) rows.push(source);
+  });
+  return rows;
+}
+
 function categoryLabel(category: unknown) {
   const labels: Record<string, string> = {
     traffic: "Traffic",
@@ -999,7 +1019,7 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
         staff_users: (store.staffUsers.length ? store.staffUsers : SEEDED_STAFF_USERS).length,
       },
       safety: { local_first: true, auto_send_email: false, auto_publish: false, staff_review_required: true },
-      integrations: { github: "public_read_only", media_sources: (store.sourceConnections.length ? store.sourceConnections : SEEDED_MEDIA_SOURCES).length },
+      integrations: { github: "public_read_only", media_sources: mergedSourceConnections(store).length },
     });
   }
   if (route === "/dashboard/overview") return json(dashboardOverview(store));
@@ -1052,7 +1072,7 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
   if (route === "/office-actions") return json([...store.officeActions].reverse());
   if (route === "/events") return json([...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || ""))));
   if (route === "/media-mentions") return json(store.mediaMentions.length ? [...store.mediaMentions].reverse() : SEEDED_MEDIA_MENTIONS);
-  if (route === "/source-connections") return json(store.sourceConnections.length ? [...store.sourceConnections].reverse() : SEEDED_MEDIA_SOURCES);
+  if (route === "/source-connections") return json(mergedSourceConnections(store).reverse());
   if (route === "/staff/users") return json(store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS);
   if (route === "/staff/roles") return json({ admin: "Administrator", strategy_advisor: "Strategy Advisor" });
   if (route === "/constituents") return json([]);
@@ -1155,7 +1175,7 @@ export async function POST(request: NextRequest, context: { params: { path?: str
     await writeStore(store);
     return json({ imported: 0, updated: 0, status: "complete" });
   } else if (route === "/media-monitor/import-sources") {
-    if (!store.sourceConnections.length) store.sourceConnections.push(...SEEDED_MEDIA_SOURCES);
+    store.sourceConnections = mergedSourceConnections(store);
     await writeStore(store);
     return json({ imported: store.sourceConnections.length, skipped: 0, status: "complete" });
   } else if (route.endsWith("/sync") || route.endsWith("/import-sources")) {

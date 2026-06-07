@@ -2421,7 +2421,7 @@ function mediaNewsTab() {
         ${storyBriefingQueue("News")}
       </main>
       <aside class="media-rail grid">
-        ${sourceWatchPanel("News Sources", ["Essex News Daily", "NJ.com Essex", "TAPinto East Orange / Orange", "Essex Review", "Patch"])}
+        ${sourceWatchPanel("News Sources", ["East Orange Record Transcript", "Essex News Daily", "NJ.com Essex", "TAPinto East Orange / Orange", "Essex Review", "Patch"])}
         ${mediaRightRail()}
       </aside>
     </section>
