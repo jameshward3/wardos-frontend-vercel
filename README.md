@@ -48,6 +48,11 @@ Create these variables in Vercel:
 WARDOS_SITE_PASSWORD=
 WARDOS_AUTH_SECRET=
 WARDOS_API_URL=
+WARDOS_MEMORY_SHEET_ID=
+WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON=
+WARDOS_CONSTITUENT_SHEET_NAME=Constituent Directory
+WARDOS_CASES_SHEET_NAME=Constituent Case Log
+WARDOS_EVENTS_SHEET_NAME=Event Log
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com
@@ -67,6 +72,18 @@ Do not hardcode passwords or OAuth secrets in the repo.
 `WARDOS_SITE_PASSWORD` remains as an emergency fallback. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
 
 `WARDOS_API_URL` is required if the Vercel site should save and read shared dashboard data. Point it to the reachable WardOS FastAPI base URL, without a trailing slash. If this is blank, the Vercel frontend can still render, but dashboard data calls to `/api` will not reach the Mac mini backend.
+
+If `WARDOS_API_URL` is blank, WardOS can still use Google Sheets as the hosted shared data layer for the online Constituents, constituent case log, and event log. Set:
+
+```env
+WARDOS_MEMORY_SHEET_ID=your-google-sheet-id
+WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON=raw-or-base64-service-account-json
+WARDOS_CONSTITUENT_SHEET_NAME=Constituent Directory
+WARDOS_CASES_SHEET_NAME=Constituent Case Log
+WARDOS_EVENTS_SHEET_NAME=Event Log
+```
+
+Use the same Google Sheet that WardOS already uses for its memory database, or another private Sheet shared with the same service account.
 
 ## Persistent Constituent Cases
 
@@ -191,6 +208,11 @@ wardos-frontend-vercel
 WARDOS_SITE_PASSWORD=your-private-password
 WARDOS_AUTH_SECRET=long-random-session-secret
 WARDOS_API_URL=https://your-reachable-wardos-api.example.com
+WARDOS_MEMORY_SHEET_ID=your-google-sheet-id
+WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON=raw-or-base64-service-account-json
+WARDOS_CONSTITUENT_SHEET_NAME=Constituent Directory
+WARDOS_CASES_SHEET_NAME=Constituent Case Log
+WARDOS_EVENTS_SHEET_NAME=Event Log
 GOOGLE_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 GOOGLE_WORKSPACE_DOMAIN=jameswardfororange.com

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
+import {
+  appendCaseToSheet,
+  appendEventToSheet,
+  hasGoogleSheetStore,
+  loadCasesFromSheet,
+  loadConstituentsFromSheet,
+  loadEventsFromSheet,
+  summarizeConstituentRows,
+} from "@/lib/google-sheets-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -756,6 +765,13 @@ async function writeGithubEvents(rows: StoredRow[], sha?: string) {
 }
 
 async function loadCases(store: Store) {
+  if (hasGoogleSheetStore()) {
+    const rows = await loadCasesFromSheet();
+    const parsed = rows.map((row, index) => ({ ...row, id: Number(row.id) || index + 1, created_at: String(row.created_at || "") })) as StoredRow[];
+    store.cases = parsed;
+    store.nextId = Math.max(store.nextId, ...parsed.map((row) => Number(row.id) + 1), 1);
+    return { rows: parsed, sha: undefined, persistent: true };
+  }
   const github = await readGithubCases();
   if (!github) return { rows: store.cases, sha: undefined, persistent: false };
   store.cases = github.rows;
@@ -764,6 +780,13 @@ async function loadCases(store: Store) {
 }
 
 async function loadEvents(store: Store) {
+  if (hasGoogleSheetStore()) {
+    const rows = await loadEventsFromSheet();
+    const parsed = rows.map((row, index) => ({ ...row, id: Number(row.id) || index + 1, created_at: String(row.created_at || "") })) as StoredRow[];
+    store.events = parsed;
+    store.nextId = Math.max(store.nextId, ...parsed.map((row) => Number(row.id) + 1), 1);
+    return { rows: parsed, sha: undefined, persistent: true };
+  }
   const github = await readGithubEvents();
   if (!github) return { rows: store.events, sha: undefined, persistent: false };
   store.events = github.rows;
@@ -778,6 +801,38 @@ function json(data: unknown, status = 200) {
       "Cache-Control": "no-store",
     },
   });
+}
+
+function filterConstituentRows(rows: Array<Record<string, string>>, request: NextRequest) {
+  const q = request.nextUrl.searchParams.get("q")?.trim().toLowerCase() || "";
+  const ward = request.nextUrl.searchParams.get("ward")?.trim().toLowerCase() || "";
+  const subgroup = request.nextUrl.searchParams.get("subgroup")?.trim().toLowerCase() || "";
+  const limit = Math.max(1, Math.min(Number(request.nextUrl.searchParams.get("limit") || "50000"), 50000));
+  let filtered = rows;
+  if (ward) filtered = filtered.filter((row) => String(row.ward || "").trim().toLowerCase() === ward);
+  if (subgroup) filtered = filtered.filter((row) => String(row.subgroup || "").trim().toLowerCase() === subgroup);
+  if (q) {
+    filtered = filtered.filter((row) =>
+      [
+        row.full_name,
+        row.street_no,
+        row.street,
+        row.apt,
+        row.city,
+        row.state,
+        row.zip_code,
+        row.voter_id,
+        row.ward,
+        row.subgroup,
+        row.notes,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }
+  return filtered.slice(0, limit);
 }
 
 function hostedWeatherFallback() {
@@ -1086,8 +1141,23 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
   if (route === "/source-connections") return json(mergedSourceConnections(store).reverse());
   if (route === "/staff/users") return json(store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS);
   if (route === "/staff/roles") return json({ admin: "Administrator", strategy_advisor: "Strategy Advisor" });
-  if (route === "/constituents") return json([]);
+  if (route === "/constituents") {
+    if (hasGoogleSheetStore()) {
+      const rows = await loadConstituentsFromSheet();
+      return json(filterConstituentRows(rows, request));
+    }
+    return json([]);
+  }
   if (route === "/constituents/summary") {
+    if (hasGoogleSheetStore()) {
+      const rows = await loadConstituentsFromSheet();
+      const summary = summarizeConstituentRows(rows);
+      return json({
+        ...summary,
+        mailin_may_2026: Object.entries(summary.by_subgroup).reduce((total, [name, count]) => total + (/mail-?in/i.test(name) ? count : 0), 0),
+        average_days_to_return: "N/A",
+      });
+    }
     return json(CONSTITUENT_SUMMARY);
   }
   if (route === "/media-monitor") {
@@ -1154,7 +1224,8 @@ export async function POST(request: NextRequest, context: { params: { path?: str
     const existingCases = await loadCases(store);
     row = createRow(store, { status: "open", priority: "normal", ...payload });
     store.cases = [...existingCases.rows, row];
-    if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
+    if (hasGoogleSheetStore()) await appendCaseToSheet(row);
+    else if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);
     return json({ ...row, status: row.status || "created", persistent: existingCases.persistent }, 201);
   } else if (route === "/legislation") {
@@ -1170,7 +1241,8 @@ export async function POST(request: NextRequest, context: { params: { path?: str
     const existingEvents = await loadEvents(store);
     row = createRow(store, { status: "scheduled", event_type: "office_event", ...payload });
     store.events = [...existingEvents.rows, row];
-    if (existingEvents.persistent) await writeGithubEvents(store.events, existingEvents.sha);
+    if (hasGoogleSheetStore()) await appendEventToSheet(row);
+    else if (existingEvents.persistent) await writeGithubEvents(store.events, existingEvents.sha);
     await writeStore(store);
     return json({ ...row, persistent: existingEvents.persistent }, 201);
   } else if (route === "/media-mentions") {
