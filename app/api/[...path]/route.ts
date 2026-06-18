@@ -10,7 +10,7 @@ import {
   loadConstituentsFromSheet,
   loadEventsFromSheet,
   summarizeConstituentRows,
-} from "../../lib/google-sheets-store";
+} from "../../../lib/google-sheets-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
