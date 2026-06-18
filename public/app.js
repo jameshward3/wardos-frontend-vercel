@@ -23,6 +23,7 @@ const state = {
   dashboardOverview: null,
   briefing: null,
   constituents: [],
+  constituentSearch: [],
   constituentSummary: null,
   cases: [],
   legislation: [],
@@ -282,7 +283,8 @@ async function loadData() {
 
   state.dashboardOverview = await getJson("/dashboard/overview", operationalOverviewFallback());
   state.briefing = await getJson("/briefing/daily", fallbackBriefing);
-  state.constituents = await getJson("/constituents?subgroup=May%202026%20Mail-In%20Voters&limit=1000", []);
+  state.constituents = await getJson("/constituents?ward=South&limit=10000", []);
+  state.constituentSearch = await getJson("/constituents?limit=50000", state.constituents);
   state.constituentSummary = await getJson("/constituents/summary", null);
   state.cases = await getJson("/cases", []);
   state.legislation = await getJson("/legislation", []);
@@ -993,10 +995,11 @@ function constituentsPage() {
   const summary = state.constituentSummary || {};
   const constituentKeys = ["full_name", "street_no", "street", "apt", "city", "state", "zip", "zip_code", "ward", "voter_status", "subgroup", "voter_id"];
   const caseKeys = ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"];
-  const mailinRows = filterRows(state.constituents, constituentKeys);
+  const localRows = filterRows(state.constituents, constituentKeys);
+  const citywideRows = filterRows(state.constituentSearch || state.constituents, constituentKeys);
   const matchingCases = filterRows(state.cases, caseKeys);
   const primaryCase = state.cases[0];
-  const primaryConstituent = mailinRows[0] || state.constituents[0];
+  const primaryConstituent = localRows[0] || state.constituents[0] || citywideRows[0];
   if (!primaryCase && !primaryConstituent) {
     return h`
       <div class="page-head">
@@ -1027,26 +1030,26 @@ function constituentsPage() {
         <div>
           <h3>Constituent Summary</h3>
           <div class="budget-row"><span>Constituents</span><strong>${summary.total || state.constituents.length}</strong><span></span></div>
-          <div class="budget-row"><span>Mail-in May 2026</span><strong class="blue">${summary.mailin_may_2026 || state.constituents.length}</strong><span></span></div>
+          <div class="budget-row"><span>South Ward Active</span><strong class="blue">${(summary.by_ward || {}).South || state.constituents.length}</strong><span></span></div>
           <div class="budget-row"><span>Outstanding</span><strong class="orange">${summary.outstanding || 0}</strong><span></span></div>
           <div class="budget-row"><span>Received</span><strong class="green">${summary.received || 0}</strong><span></span></div>
         </div>
       </div>
-      <div class="tabs">${["overview", "mail-in voters", "cases", "communications", "notes", "history", "documents"].map((tab) => `<button class="tab ${state.tab === tab ? "active" : ""}" data-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join("")}</div>
+      <div class="tabs">${["overview", "south ward voters", "citywide search", "cases", "communications", "notes", "history", "documents"].map((tab) => `<button class="tab ${state.tab === tab ? "active" : ""}" data-tab="${tab}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join("")}</div>
     </section>
     <section class="grid wide-right" style="margin-top:16px">
       <div class="grid two-col">
         <section class="panel">
-          <div class="panel-header"><h2>Mail-in Voter Subgroup</h2><button class="secondary" data-open-draft="${heroName} Follow-up">Draft Follow-up</button></div>
+          <div class="panel-header"><h2>South Ward Active Voters</h2><button class="secondary" data-open-draft="${heroName} Follow-up">Draft Follow-up</button></div>
           <div class="panel-body timeline">
             <div class="grid metrics compact-metrics">
-              ${metric(summary.mailin_may_2026 || state.constituents.length, "Mail-in Voters", "May 2026", "blue")}
-              ${metric(summary.received || 0, "Received", "Returned", "green")}
-              ${metric(summary.outstanding || 0, "Outstanding", "Follow-up", "orange")}
+              ${metric((summary.by_ward || {}).South || state.constituents.length, "South Ward", "Local constituents", "blue")}
+              ${metric(summary.total || (state.constituentSearch || []).length, "Citywide", "Searchable voters", "green")}
+              ${metric(Object.keys(summary.by_ward || {}).length || 0, "Ward Markers", "Tagged records", "orange")}
             </div>
-            <div class="panel-note">This subgroup is imported from the May 2026 South Ward mail-in voter list. No outreach is sent automatically.</div>
-            ${constituentCrossReference(mailinRows, matchingCases)}
-            ${constituentRows(mailinRows)}
+            <div class="panel-note">South Ward is the local constituent view. The full Orange active voter file remains available for search and case cross-reference. No outreach is sent automatically.</div>
+            ${constituentCrossReference(citywideRows, matchingCases)}
+            ${constituentRows(state.search.trim() ? citywideRows : localRows)}
           </div>
         </section>
         <section class="panel">
@@ -1076,7 +1079,7 @@ function constituentAddress(row) {
 function constituentDatalists() {
   const byName = new Map();
   const byAddress = new Map();
-  (state.constituents || []).forEach((row) => {
+  (state.constituentSearch || state.constituents || []).forEach((row) => {
     if (row.full_name && !byName.has(row.full_name)) byName.set(row.full_name, row);
     const address = constituentAddress(row);
     if (address && !byAddress.has(address)) byAddress.set(address, row);
@@ -1129,13 +1132,19 @@ function constituentCrossReference(constituents, cases) {
 function caseRows(rows = null) {
   rows = rows || filterRows(state.cases, ["constituent_name", "address_line", "phone", "email", "topic", "notes", "status", "priority"]);
   if (!rows.length) return `<div class="empty">No cases match this search.</div>`;
-  return rows.map((row) => h`
-    <div class="list-row">
-      <span><small class="muted">#${row.id}</small><br><strong>${row.topic}</strong><br><small class="muted">${row.constituent_name}${row.address_line ? ` · ${row.address_line}` : ""}${row.phone ? ` · ${row.phone}` : ""}${row.email ? ` · ${row.email}` : ""}</small></span>
-      <span><small class="muted">Priority</small><br><span class="status ${row.priority === "high" ? "hot" : "warn"}">${row.priority}</span></span>
-      <span class="status">${row.status}</span>
-    </div>
-  `).join("");
+  return rows.map((row) => {
+    const ward = row.matched_constituent_ward || "";
+    const wardBadge = ward
+      ? `<br><span class="status ${row.outside_local_ward ? "warn" : "info"}">${row.outside_local_ward ? `${ward} Ward · outside South` : "South Ward"}</span>`
+      : "";
+    return h`
+      <div class="list-row">
+        <span><small class="muted">#${row.id}</small><br><strong>${row.topic}</strong><br><small class="muted">${row.constituent_name}${row.address_line ? ` · ${row.address_line}` : ""}${row.phone ? ` · ${row.phone}` : ""}${row.email ? ` · ${row.email}` : ""}</small>${wardBadge}</span>
+        <span><small class="muted">Priority</small><br><span class="status ${row.priority === "high" ? "hot" : "warn"}">${row.priority}</span></span>
+        <span class="status">${row.status}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function constituentRows(rows) {
@@ -1143,8 +1152,8 @@ function constituentRows(rows) {
   return rows.slice(0, 30).map((row) => h`
     <div class="list-row">
       <span><small class="muted">${row.voter_id}</small><br><strong>${row.full_name}</strong><br><small class="muted">${row.street_no} ${row.street}${row.apt ? ` Apt ${row.apt}` : ""}</small></span>
-      <span><small class="muted">Sent</small><br>${row.mailin_sent_date || "Not set"}<br><small class="muted">Received: ${row.mailin_received_date || "Outstanding"}</small></span>
-      <span class="status ${row.voter_status === "Received" ? "good" : "warn"}">${row.voter_status || "Unknown"}</span>
+      <span><small class="muted">Ward</small><br>${row.ward || "Unknown"}<br><small class="muted">${row.subgroup || "Registered voter"}</small></span>
+      <span class="status ${String(row.ward || "").toLowerCase() === "south" ? "good" : "warn"}">${String(row.ward || "").toLowerCase() === "south" ? "Local" : `${row.ward || "Other"} Ward`}</span>
     </div>
   `).join("");
 }
@@ -1154,9 +1163,9 @@ function constituentSidePanel() {
   return h`
     <div class="grid">
       <section class="panel"><div class="panel-header"><h2>Constituent Details</h2></div><div class="panel-body">
-        <div class="budget-row"><span>Subgroup</span><strong>May 2026 Mail-In Voters</strong><span></span></div>
-        <div class="budget-row"><span>Ward</span><strong>${Object.keys(summary.by_ward || {}).join(", ") || "South"}</strong><span></span></div>
-        <div class="budget-row"><span>Avg Return</span><strong>${summary.average_days_to_return || "N/A"} days</strong><span></span></div>
+        <div class="budget-row"><span>Local List</span><strong>South Ward Active Voters</strong><span></span></div>
+        <div class="budget-row"><span>Citywide File</span><strong>${summary.total || (state.constituentSearch || []).length}</strong><span></span></div>
+        <div class="budget-row"><span>Ward Counts</span><strong>${Object.entries(summary.by_ward || {}).map(([ward, count]) => `${ward}: ${count}`).join(" · ") || "Pending"}</strong><span></span></div>
         <div class="budget-row"><span>Auto-send</span><strong>Disabled</strong><span></span></div>
         <div class="budget-row"><span>Notes</span><strong>Use manual actions for follow-ups and media/field coordination.</strong><span></span></div>
       </div></section>
@@ -2984,15 +2993,15 @@ function buildSearchIndex() {
     keywords: [item.notes, item.phone, item.email],
     action: { caseId: item.id, tab: "cases" },
   })));
-  state.constituents.slice(0, 1000).forEach((item) => entries.push(searchEntry({
+  (state.constituentSearch || state.constituents).slice(0, 50000).forEach((item) => entries.push(searchEntry({
     section: "Constituents",
     type: item.subgroup || "Resident",
     title: item.full_name,
     summary: `${item.street_no || ""} ${item.street || ""} ${item.apt || ""} · ${item.ward || "Ward pending"} · ${item.voter_status || ""}`,
     page: "constituents",
-    tone: "blue",
+    tone: String(item.ward || "").toLowerCase() === "south" ? "blue" : "orange",
     keywords: [item.voter_id, item.city, item.zip_code, item.zip, item.street_no, item.apt, item.subgroup],
-    action: { tab: "mail-in voters" },
+    action: { tab: String(item.ward || "").toLowerCase() === "south" ? "south ward voters" : "citywide search" },
   })));
   normalizedLegislationRows().forEach((item) => entries.push(searchEntry({
     section: "Legislation",
@@ -3669,13 +3678,13 @@ function bindModalForms(type) {
 function findConstituentByName(name) {
   const value = String(name || "").trim().toLowerCase();
   if (!value) return null;
-  return (state.constituents || []).find((row) => String(row.full_name || "").trim().toLowerCase() === value) || null;
+  return (state.constituentSearch || state.constituents || []).find((row) => String(row.full_name || "").trim().toLowerCase() === value) || null;
 }
 
 function findConstituentByAddress(address) {
   const value = String(address || "").trim().toLowerCase();
   if (!value) return null;
-  return (state.constituents || []).find((row) => constituentAddress(row).trim().toLowerCase() === value) || null;
+  return (state.constituentSearch || state.constituents || []).find((row) => constituentAddress(row).trim().toLowerCase() === value) || null;
 }
 
 function bindCaseAutofill() {
