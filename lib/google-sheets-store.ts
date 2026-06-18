@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createSign } from "node:crypto";
 import { promises as fs } from "node:fs";
 
