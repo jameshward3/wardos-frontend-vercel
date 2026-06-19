@@ -68,6 +68,10 @@ function eventSheetName() {
 }
 
 export function hasGoogleSheetStore() {
+  return Boolean(sheetId());
+}
+
+export function hasGoogleSheetWriteStore() {
   return Boolean(sheetId() && (process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON?.trim() || process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_FILE?.trim()));
 }
 
@@ -193,6 +197,47 @@ async function readSheetObjects(title: string) {
   });
 }
 
+async function readPublicSheetObjects(title: string) {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId()}/gviz/tq?sheet=${encodeURIComponent(title)}&tqx=out:json`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Public Google Sheet request failed: ${response.status} ${detail}`);
+  }
+
+  const raw = await response.text();
+  const prefix = "google.visualization.Query.setResponse(";
+  const start = raw.indexOf(prefix);
+  const end = raw.lastIndexOf(");");
+  if (start === -1 || end === -1) {
+    throw new Error("Could not parse public Google Sheet response");
+  }
+
+  const payload = JSON.parse(raw.slice(start + prefix.length, end)) as {
+    status?: string;
+    table?: {
+      cols?: Array<{ label?: string }>;
+      rows?: Array<{ c?: Array<{ v?: unknown; f?: string | null } | null> }>;
+    };
+  };
+
+  const headers = (payload.table?.cols || []).map((col) => normalizeHeader(String(col.label || "")));
+  const rows = payload.table?.rows || [];
+
+  return rows
+    .map((row) => {
+      const record: SheetRow = {};
+      headers.forEach((header, index) => {
+        if (!header) return;
+        const cell = row.c?.[index];
+        const value = cell?.f ?? cell?.v ?? "";
+        record[header] = String(value ?? "");
+      });
+      return record;
+    })
+    .filter((record) => Object.values(record).some((value) => String(value || "").trim()));
+}
+
 async function ensureHeader(title: string, headers: string[]) {
   await ensureSheet(title);
   const values = await readValues(title);
@@ -209,18 +254,22 @@ async function ensureHeader(title: string, headers: string[]) {
 }
 
 export async function loadConstituentsFromSheet() {
-  return readSheetObjects(constituentSheetName());
+  if (hasGoogleSheetWriteStore()) return readSheetObjects(constituentSheetName());
+  return readPublicSheetObjects(constituentSheetName());
 }
 
 export async function loadCasesFromSheet() {
-  return readSheetObjects(caseSheetName());
+  if (hasGoogleSheetWriteStore()) return readSheetObjects(caseSheetName());
+  return readPublicSheetObjects(caseSheetName());
 }
 
 export async function loadEventsFromSheet() {
-  return readSheetObjects(eventSheetName());
+  if (hasGoogleSheetWriteStore()) return readSheetObjects(eventSheetName());
+  return readPublicSheetObjects(eventSheetName());
 }
 
 export async function appendCaseToSheet(row: Record<string, unknown>) {
+  if (!hasGoogleSheetWriteStore()) throw new Error("WardOS Google Sheets write credentials are not configured");
   const headers = [
     "id",
     "created_at",
@@ -242,6 +291,7 @@ export async function appendCaseToSheet(row: Record<string, unknown>) {
 }
 
 export async function appendEventToSheet(row: Record<string, unknown>) {
+  if (!hasGoogleSheetWriteStore()) throw new Error("WardOS Google Sheets write credentials are not configured");
   const headers = [
     "id",
     "created_at",

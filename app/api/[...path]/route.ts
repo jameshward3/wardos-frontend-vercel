@@ -6,6 +6,7 @@ import {
   appendCaseToSheet,
   appendEventToSheet,
   hasGoogleSheetStore,
+  hasGoogleSheetWriteStore,
   loadCasesFromSheet,
   loadConstituentsFromSheet,
   loadEventsFromSheet,
@@ -1225,7 +1226,7 @@ export async function POST(request: NextRequest, context: { params: { path?: str
     const existingCases = await loadCases(store);
     row = createRow(store, { status: "open", priority: "normal", ...payload });
     store.cases = [...existingCases.rows, row];
-    if (hasGoogleSheetStore()) await appendCaseToSheet(row);
+    if (hasGoogleSheetWriteStore()) await appendCaseToSheet(row);
     else if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);
     return json({ ...row, status: row.status || "created", persistent: existingCases.persistent }, 201);
@@ -1242,7 +1243,7 @@ export async function POST(request: NextRequest, context: { params: { path?: str
     const existingEvents = await loadEvents(store);
     row = createRow(store, { status: "scheduled", event_type: "office_event", ...payload });
     store.events = [...existingEvents.rows, row];
-    if (hasGoogleSheetStore()) await appendEventToSheet(row);
+    if (hasGoogleSheetWriteStore()) await appendEventToSheet(row);
     else if (existingEvents.persistent) await writeGithubEvents(store.events, existingEvents.sha);
     await writeStore(store);
     return json({ ...row, persistent: existingEvents.persistent }, 201);
