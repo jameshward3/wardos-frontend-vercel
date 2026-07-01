@@ -7,18 +7,34 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isAuthenticated = await hasValidSession(request);
+  const responseHeaders = new Headers({
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
+    "Cache-Control": pathname.startsWith("/api/auth/session") ? "no-store" : "private, no-store",
+  });
 
   if (pathname === "/login" && isAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const response = NextResponse.redirect(new URL("/dashboard", request.url));
+    responseHeaders.forEach((value, key) => response.headers.set(key, value));
+    return response;
   }
 
   if (!isPublicPath && !isAuthenticated) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ detail: "Authentication required" }, { status: 401, headers: responseHeaders });
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    const response = NextResponse.redirect(loginUrl);
+    responseHeaders.forEach((value, key) => response.headers.set(key, value));
+    return response;
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  responseHeaders.forEach((value, key) => response.headers.set(key, value));
+  return response;
 }
 
 export const config = {

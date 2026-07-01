@@ -22,5 +22,6 @@ export async function GET(request: Request) {
     maxAge: 0,
     path: "/",
   });
+  response.headers.set("Cache-Control", "no-store");
   return response;
 }

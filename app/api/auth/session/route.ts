@@ -54,5 +54,10 @@ async function readWorkspaceSession(value: string | undefined, secret: string | 
 
 export async function GET(request: NextRequest) {
   const session = await readWorkspaceSession(request.cookies.get(SESSION_COOKIE)?.value, getSessionSecret());
-  return NextResponse.json(session);
+  return NextResponse.json(session, {
+    headers: {
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
