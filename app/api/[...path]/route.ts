@@ -899,8 +899,13 @@ async function hostedWeather() {
   }
 }
 
-function normalizePath(params: { path?: string[] }) {
-  return `/${(params.path || []).join("/")}`;
+type ApiRouteContext = {
+  params: Promise<{ path?: string[] }> | { path?: string[] };
+};
+
+async function normalizePath(params: ApiRouteContext["params"]) {
+  const resolvedParams = await params;
+  return `/${(resolvedParams.path || []).join("/")}`;
 }
 
 function upstreamApiUrl(request: NextRequest, route: string) {
@@ -1054,8 +1059,8 @@ function publicSafetyDashboard(store: Store) {
   };
 }
 
-export async function GET(request: NextRequest, context: { params: { path?: string[] } }) {
-  const route = normalizePath(context.params);
+export async function GET(request: NextRequest, context: ApiRouteContext) {
+  const route = await normalizePath(context.params);
   const upstreamResponse = await proxyToWardOSApi(request, route);
   if (upstreamResponse) return upstreamResponse;
 
@@ -1213,8 +1218,8 @@ export async function GET(request: NextRequest, context: { params: { path?: stri
   return json({ error: `WardOS hosted API route not found: ${route}` }, 404);
 }
 
-export async function POST(request: NextRequest, context: { params: { path?: string[] } }) {
-  const route = normalizePath(context.params);
+export async function POST(request: NextRequest, context: ApiRouteContext) {
+  const route = await normalizePath(context.params);
   const upstreamResponse = await proxyToWardOSApi(request, route);
   if (upstreamResponse) return upstreamResponse;
 

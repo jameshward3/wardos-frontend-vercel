@@ -47,7 +47,7 @@ async function loadServiceAccount(): Promise<ServiceAccountInfo | null> {
 
   const filePath = process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_FILE?.trim() || "";
   if (!filePath) return null;
-  const raw = await fs.readFile(filePath, "utf8");
+  const raw = await fs.readFile(/* turbopackIgnore: true */ filePath, "utf8");
   return parseServiceAccount(raw);
 }
 

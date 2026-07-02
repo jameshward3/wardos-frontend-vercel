@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Dashboard from "../../src/pages/Dashboard";
+import Dashboard from "../../src/voter-intel-pages/Dashboard";
 
 export const metadata: Metadata = {
   title: "Orange Voter Intelligence Platform",

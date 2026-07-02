@@ -3,7 +3,7 @@ import { hasValidSession } from "./lib/session";
 
 const PUBLIC_PATHS = ["/login", "/logout", "/api/login", "/api/auth/google", "/api/voter-intel", "/voter-intel"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isAuthenticated = await hasValidSession(request);

@@ -50,11 +50,9 @@ export async function createWorkspaceSessionValue(email: string, secret: string,
 }
 
 function sessionSecret() {
-  return (
-    process.env.WARDOS_AUTH_SECRET?.trim() ||
-    process.env.WARDOS_SITE_PASSWORD?.trim() ||
-    process.env.GOOGLE_CLIENT_SECRET?.trim()
-  );
+  const dedicatedSecret = process.env.WARDOS_AUTH_SECRET?.trim();
+  if (process.env.NODE_ENV === "production") return dedicatedSecret;
+  return dedicatedSecret || process.env.WARDOS_SITE_PASSWORD?.trim() || process.env.GOOGLE_CLIENT_SECRET?.trim();
 }
 
 export async function isValidSessionValue(value: string | undefined, secret: string | undefined) {
@@ -89,10 +87,10 @@ export async function isValidSessionValue(value: string | undefined, secret: str
 
 export async function hasValidSession(request: NextRequest) {
   const value = request.cookies.get(SESSION_COOKIE)?.value;
-  return (
-    (await isValidSessionValue(value, sessionSecret())) ||
-    (await isValidSessionValue(value, process.env.WARDOS_SITE_PASSWORD?.trim()))
-  );
+  const primarySecret = sessionSecret();
+  if (await isValidSessionValue(value, primarySecret)) return true;
+  if (process.env.NODE_ENV === "production") return false;
+  return isValidSessionValue(value, process.env.WARDOS_SITE_PASSWORD?.trim());
 }
 
 export function getSessionSecret() {

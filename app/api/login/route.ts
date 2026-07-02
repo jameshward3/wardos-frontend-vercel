@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "../../../lib/rate-limit";
-import { createSessionValue, SESSION_COOKIE, SESSION_TTL_SECONDS } from "../../../lib/session";
+import { createSessionValue, getSessionSecret, SESSION_COOKIE, SESSION_TTL_SECONDS } from "../../../lib/session";
 
 function safeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
@@ -29,10 +29,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.redirect(loginUrl, { status: 303 });
   }
 
+  const sessionSecret = getSessionSecret();
+  if (!sessionSecret) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("error", "1");
+    loginUrl.searchParams.set("next", nextPath);
+    return NextResponse.redirect(loginUrl, { status: 303 });
+  }
+
   const response = NextResponse.redirect(new URL(nextPath, request.url), { status: 303 });
   response.cookies.set({
     name: SESSION_COOKIE,
-    value: await createSessionValue(password),
+    value: await createSessionValue(sessionSecret),
     httpOnly: true,
     secure: true,
     sameSite: "lax",
