@@ -927,7 +927,8 @@ async function proxyToWardOSApi(request: NextRequest, route: string) {
   const response = await fetch(url, {
     method: request.method,
     headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
+    // Use arrayBuffer (not text) so binary/multipart bodies like file uploads aren't corrupted in transit.
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer(),
     cache: "no-store",
   });
   return new NextResponse(response.body, {
