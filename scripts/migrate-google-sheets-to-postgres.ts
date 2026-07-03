@@ -370,11 +370,43 @@ function collectStats(spreadsheet: Awaited<ReturnType<typeof readSpreadsheet>>) 
   };
 }
 
-async function upsertRows(db, table, rows: Record<string, unknown>[], conflictTarget, setValues: (row: Record<string, unknown>) => Record<string, unknown>) {
+function sqlIdentifier(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function excludedSet(table, sampleSet: Record<string, unknown>) {
+  const set: Record<string, unknown> = {};
+  for (const key of Object.keys(sampleSet)) {
+    const columnName = table[key]?.name;
+    if (!columnName) continue;
+    set[key] = sql.raw(`excluded.${sqlIdentifier(columnName)}`);
+  }
+  return set;
+}
+
+async function upsertRows(db, table, rows: Record<string, unknown>[], conflictTarget, setValues: (row: Record<string, unknown>) => Record<string, unknown>, chunkSize = 500) {
   let imported = 0;
-  for (const row of rows) {
-    await db.insert(table).values(row).onConflictDoUpdate({ target: conflictTarget, set: stripUndefined(setValues(row)) });
-    imported += 1;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    if (!chunk.length) continue;
+    const updateSet = excludedSet(table, stripUndefined(setValues(chunk[0])));
+    if (Object.keys(updateSet).length) {
+      await db.insert(table).values(chunk).onConflictDoUpdate({ target: conflictTarget, set: updateSet });
+    } else {
+      await db.insert(table).values(chunk).onConflictDoNothing({ target: conflictTarget });
+    }
+    imported += chunk.length;
+  }
+  return imported;
+}
+
+async function insertRowsDoNothing(db, table, rows: Record<string, unknown>[], conflictTarget, chunkSize = 500) {
+  let imported = 0;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    if (!chunk.length) continue;
+    await db.insert(table).values(chunk).onConflictDoNothing({ target: conflictTarget });
+    imported += chunk.length;
   }
   return imported;
 }
@@ -421,7 +453,7 @@ async function applyMigration(spreadsheet: Awaited<ReturnType<typeof readSpreads
       status: "seen",
       error: "",
     }));
-    summary.total_rows_imported += await upsertRows(db, sheetSourceRows, sourceRows, [sheetSourceRows.spreadsheetId, sheetSourceRows.tabName, sheetSourceRows.sheetRowNumber, sheetSourceRows.rowHash], () => ({ status: "seen" }));
+    summary.total_rows_imported += await insertRowsDoNothing(db, sheetSourceRows, sourceRows, [sheetSourceRows.spreadsheetId, sheetSourceRows.tabName, sheetSourceRows.sheetRowNumber, sheetSourceRows.rowHash]);
     summary.tables_mapped.push("sheet_source_rows");
 
     const memoryTab = spreadsheet.tabs.find((tab) => tab.title === "Memory Index");
