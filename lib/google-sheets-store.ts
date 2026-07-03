@@ -13,6 +13,32 @@ type SheetRow = Record<string, string>;
 const DEFAULT_CONSTITUENT_SHEET = "Constituent Directory";
 const DEFAULT_CASE_SHEET = "Constituent Case Log";
 const DEFAULT_EVENT_SHEET = "Event Log";
+const DEFAULT_MEMORY_SHEET_ID = "1X6RwweEwqRSXII27hlmn8Qed8gSQuahaY40EA32XFE4";
+const MEMORY_INDEX_SHEET = "Memory Index";
+const MEMORY_FIELDS = [
+  "memory_key",
+  "category",
+  "source_table",
+  "source_id",
+  "title",
+  "summary",
+  "status",
+  "priority",
+  "owner",
+  "event_date",
+  "url",
+  "tags",
+  "payload_json",
+  "sheet_name",
+  "row_hash",
+  "last_seen_at",
+  "created_at",
+  "updated_at",
+  "age_days",
+  "open_flag",
+  "record_link",
+  "needs_review",
+];
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 function base64Url(value: Buffer | string) {
@@ -52,7 +78,7 @@ async function loadServiceAccount(): Promise<ServiceAccountInfo | null> {
 }
 
 function sheetId() {
-  return process.env.WARDOS_MEMORY_SHEET_ID?.trim() || "";
+  return process.env.WARDOS_MEMORY_SHEET_ID?.trim() || DEFAULT_MEMORY_SHEET_ID;
 }
 
 function constituentSheetName() {
@@ -73,6 +99,22 @@ export function hasGoogleSheetStore() {
 
 export function hasGoogleSheetWriteStore() {
   return Boolean(sheetId() && (process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON?.trim() || process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_FILE?.trim()));
+}
+
+export function googleSheetConfigStatus() {
+  return {
+    configured: hasGoogleSheetStore(),
+    writable: hasGoogleSheetWriteStore(),
+    sheet_id: sheetId(),
+    sheet_url: sheetId() ? `https://docs.google.com/spreadsheets/d/${sheetId()}/edit` : "",
+    service_account_configured: Boolean(process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON?.trim() || process.env.WARDOS_GOOGLE_SERVICE_ACCOUNT_FILE?.trim()),
+    sheets: {
+      memory_index: MEMORY_INDEX_SHEET,
+      constituents: constituentSheetName(),
+      cases: caseSheetName(),
+      events: eventSheetName(),
+    },
+  };
 }
 
 async function googleAccessToken() {
@@ -197,6 +239,86 @@ async function readSheetObjects(title: string) {
   });
 }
 
+function parsePayload(row: SheetRow) {
+  const raw = row.payload_json || "";
+  if (!raw) return {} as Record<string, unknown>;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
+function firstNonEmpty(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function memoryRowToConstituent(row: SheetRow, index: number) {
+  const payload = parsePayload(row);
+  return {
+    id: firstNonEmpty(row.source_id, index + 1),
+    voter_id: firstNonEmpty(payload.voter_id, row.source_id),
+    first_name: "",
+    last_name: "",
+    full_name: row.title || "",
+    street_no: "",
+    street: row.summary || "",
+    apt: "",
+    city: "Orange",
+    state: "NJ",
+    zip_code: "",
+    ward: firstNonEmpty((row.tags || "").split(",")[0], "Unknown"),
+    subgroup: row.priority || "",
+    voter_status: row.status || "",
+    mailin_request_date: String(payload.mailin_request_date || ""),
+    mailin_sent_date: String(payload.mailin_sent_date || ""),
+    mailin_received_date: String(payload.mailin_received_date || ""),
+    days_to_return: String(payload.days_to_return || ""),
+    source_file: String(payload.source_file || ""),
+    notes: String(payload.notes || ""),
+    created_at: row.created_at || "",
+    updated_at: row.updated_at || row.last_seen_at || "",
+  };
+}
+
+function memoryRowToCase(row: SheetRow, index: number) {
+  const payload = parsePayload(row);
+  return {
+    id: firstNonEmpty(row.source_id, index + 1),
+    created_at: row.event_date || row.created_at || "",
+    constituent_name: String(payload.constituent_name || ""),
+    address_line: String(payload.address_line || ""),
+    phone: String(payload.phone || ""),
+    email: String(payload.email || ""),
+    topic: row.title || "Constituent need",
+    status: row.status || "open",
+    priority: row.priority || "normal",
+    notes: firstNonEmpty(row.summary, payload.notes),
+    latitude: String(payload.latitude || ""),
+    longitude: String(payload.longitude || ""),
+  };
+}
+
+function memoryRowToEvent(row: SheetRow, index: number) {
+  const payload = parsePayload(row);
+  return {
+    id: firstNonEmpty(row.source_id, index + 1),
+    created_at: row.created_at || "",
+    title: row.title || "WardOS event",
+    starts_at: row.event_date || "",
+    location: String(payload.location || ""),
+    event_type: String(payload.event_type || "event"),
+    status: row.status || "scheduled",
+    notes: row.summary || "",
+    source_url: row.url || "",
+    source_id: String(payload.source_id || row.source_id || ""),
+  };
+}
+
 async function readPublicSheetObjects(title: string) {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId()}/gviz/tq?sheet=${encodeURIComponent(title)}&tqx=out:json`;
   const response = await fetch(url, { cache: "no-store" });
@@ -254,18 +376,75 @@ async function ensureHeader(title: string, headers: string[]) {
 }
 
 export async function loadConstituentsFromSheet() {
-  if (hasGoogleSheetWriteStore()) return readSheetObjects(constituentSheetName());
-  return readPublicSheetObjects(constituentSheetName());
+  let rows: SheetRow[] = [];
+  try {
+    rows = hasGoogleSheetWriteStore() ? await readSheetObjects(constituentSheetName()) : await readPublicSheetObjects(constituentSheetName());
+  } catch {
+    rows = [];
+  }
+  if (rows.length) return rows;
+  return (await loadMemoryRows("constituents")).map(memoryRowToConstituent);
 }
 
 export async function loadCasesFromSheet() {
-  if (hasGoogleSheetWriteStore()) return readSheetObjects(caseSheetName());
-  return readPublicSheetObjects(caseSheetName());
+  let rows: SheetRow[] = [];
+  try {
+    rows = hasGoogleSheetWriteStore() ? await readSheetObjects(caseSheetName()) : await readPublicSheetObjects(caseSheetName());
+  } catch {
+    rows = [];
+  }
+  if (rows.length) return rows;
+  return (await loadMemoryRows("constituent_needs")).map(memoryRowToCase);
 }
 
 export async function loadEventsFromSheet() {
-  if (hasGoogleSheetWriteStore()) return readSheetObjects(eventSheetName());
-  return readPublicSheetObjects(eventSheetName());
+  let rows: SheetRow[] = [];
+  try {
+    rows = hasGoogleSheetWriteStore() ? await readSheetObjects(eventSheetName()) : await readPublicSheetObjects(eventSheetName());
+  } catch {
+    rows = [];
+  }
+  if (rows.length) return rows;
+  return (await loadMemoryRows("events")).map(memoryRowToEvent);
+}
+
+export async function loadMemoryRows(category?: string) {
+  if (!hasGoogleSheetStore()) return [] as SheetRow[];
+  let rows: SheetRow[] = [];
+  try {
+    rows = hasGoogleSheetWriteStore() ? await readSheetObjects(MEMORY_INDEX_SHEET) : await readPublicSheetObjects(MEMORY_INDEX_SHEET);
+  } catch {
+    rows = [];
+  }
+  const normalized = rows.filter((row) => row.memory_key && row.category);
+  if (!category) return normalized;
+  return normalized.filter((row) => String(row.category || "") === category);
+}
+
+export async function googleSheetRuntimeStatus() {
+  const status = googleSheetConfigStatus();
+  if (!status.configured) return { ...status, readable: false, row_count: 0, categories: {}, error: "WARDOS_MEMORY_SHEET_ID is not configured" };
+  try {
+    const rows = await loadMemoryRows();
+    const categories = rows.reduce((acc: Record<string, number>, row) => {
+      const category = row.category || "unknown";
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {});
+    return { ...status, readable: true, row_count: rows.length, categories, error: "" };
+  } catch (error) {
+    return {
+      ...status,
+      readable: false,
+      row_count: 0,
+      categories: {},
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function memoryFields() {
+  return [...MEMORY_FIELDS];
 }
 
 export async function appendCaseToSheet(row: Record<string, unknown>) {

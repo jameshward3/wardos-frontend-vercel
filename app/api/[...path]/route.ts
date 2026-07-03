@@ -5,11 +5,14 @@ import path from "path";
 import {
   appendCaseToSheet,
   appendEventToSheet,
+  googleSheetRuntimeStatus,
   hasGoogleSheetStore,
   hasGoogleSheetWriteStore,
   loadCasesFromSheet,
   loadConstituentsFromSheet,
   loadEventsFromSheet,
+  loadMemoryRows,
+  memoryFields,
   summarizeConstituentRows,
 } from "../../../lib/google-sheets-store";
 
@@ -857,6 +860,30 @@ function hostedWeatherFallback() {
   };
 }
 
+async function hostedMemoryDatabase(limit: number) {
+  const rows = await loadMemoryRows();
+  const byCategory = rows.reduce((acc: Record<string, number>, row) => {
+    const category = String(row.category || "unknown");
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+  const sortedRows = [...rows].sort((a, b) => String(b.updated_at || b.last_seen_at || "").localeCompare(String(a.updated_at || a.last_seen_at || "")));
+  const status = await googleSheetRuntimeStatus();
+  return {
+    summary: {
+      total: rows.length,
+      by_category: byCategory,
+      sheet_id: status.sheet_id,
+      sheet_url: status.sheet_url,
+      fields: memoryFields(),
+      source: "google_sheet",
+      readable: status.readable,
+      service_account_configured: status.service_account_configured,
+    },
+    recent: sortedRows.slice(0, Math.max(1, Math.min(limit, 500))),
+  };
+}
+
 async function hostedWeather() {
   const url = (
     "https://api.open-meteo.com/v1/forecast"
@@ -1074,7 +1101,13 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
   }
 
   if (route === "/health") return json({ ok: true, mode: "hosted-fallback" });
+  if (route === "/memory/database/google-sheet") return json(await googleSheetRuntimeStatus());
+  if (route === "/memory/database") {
+    const limit = Number(request.nextUrl.searchParams.get("limit") || "50");
+    return json(await hostedMemoryDatabase(limit));
+  }
   if (route === "/system/status") {
+    const sheetStatus = await googleSheetRuntimeStatus();
     return json({
       ok: true,
       timezone: "America/New_York",
@@ -1093,7 +1126,18 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
         staff_users: (store.staffUsers.length ? store.staffUsers : SEEDED_STAFF_USERS).length,
       },
       safety: { local_first: true, auto_send_email: false, auto_publish: false, staff_review_required: true },
-      integrations: { github: "public_read_only", media_sources: mergedSourceConnections(store).length },
+      integrations: {
+        github: "public_read_only",
+        media_sources: mergedSourceConnections(store).length,
+        google_sheet_memory: {
+          configured: sheetStatus.configured,
+          readable: sheetStatus.readable,
+          writable: sheetStatus.writable,
+          rows: sheetStatus.row_count,
+          sheet_url: sheetStatus.sheet_url,
+          error: sheetStatus.error,
+        },
+      },
     });
   }
   if (route === "/dashboard/overview") return json(dashboardOverview(store));
