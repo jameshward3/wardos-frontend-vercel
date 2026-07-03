@@ -48,6 +48,10 @@ Create these variables in Vercel:
 WARDOS_SITE_PASSWORD=
 WARDOS_AUTH_SECRET=
 WARDOS_API_URL=
+DATABASE_URL=
+GOOGLE_SHEETS_CLIENT_EMAIL=
+GOOGLE_SHEETS_PRIVATE_KEY=
+GOOGLE_SHEETS_SPREADSHEET_ID=1X6RwweEwqRSXII27hlmn8Qed8gSQuahaY40EA32XFE4
 WARDOS_MEMORY_SHEET_ID=
 WARDOS_GOOGLE_SERVICE_ACCOUNT_JSON=
 WARDOS_CONSTITUENT_SHEET_NAME=Constituent Directory
@@ -84,6 +88,111 @@ WARDOS_EVENTS_SHEET_NAME=Event Log
 ```
 
 Use the same Google Sheet that WardOS already uses for its memory database, or another private Sheet shared with the same service account.
+
+## Production Postgres / Neon Database
+
+WardOS can use Neon Postgres as the primary online data store while keeping Google Sheets as a backup/manual import source. The app uses Drizzle ORM and the Neon serverless driver. Do not use deprecated `@vercel/postgres` packages.
+
+### 1. Create The Neon Database
+
+1. In Vercel, open the WardOS project.
+2. Go to **Storage** or **Marketplace**.
+3. Add a Neon Postgres database.
+4. Copy the pooled/serverless connection string Neon provides.
+5. Add it to Vercel as:
+
+```env
+DATABASE_URL=
+```
+
+### 2. Add Google Sheet Import Variables
+
+Add these Vercel and local environment variables:
+
+```env
+GOOGLE_SHEETS_CLIENT_EMAIL=
+GOOGLE_SHEETS_PRIVATE_KEY=
+GOOGLE_SHEETS_SPREADSHEET_ID=1X6RwweEwqRSXII27hlmn8Qed8gSQuahaY40EA32XFE4
+```
+
+`GOOGLE_SHEETS_PRIVATE_KEY` should preserve newlines. In Vercel, either paste the key with real line breaks or use escaped `\n` line breaks. Do not commit it.
+
+The Google Sheet must be shared with the service account email as Viewer for dry runs and Editor only if future sync-back/export requires writing.
+
+### 3. Create Tables
+
+Run this locally after setting `DATABASE_URL`:
+
+```bash
+npm run db:migrate
+```
+
+This applies the Drizzle migrations in `migrations/`.
+
+### 4. Dry-Run The Google Sheet Migration
+
+Dry-run reads the Sheet and reports mappings without writing to Postgres:
+
+```bash
+npm run migrate:sheets -- --dry-run
+```
+
+Review:
+
+- tabs found
+- tables mapped
+- total rows found
+- skipped rows
+- unmapped columns
+- duplicate indicators
+
+### 5. Apply The Migration
+
+Only after the dry-run is reviewed:
+
+```bash
+npm run migrate:sheets -- --apply
+```
+
+The apply run upserts by stable source keys so repeated runs do not create duplicate records:
+
+- `wardos_memory_items.memory_key`
+- `constituents` by original Sheet row/source identity and voter ID where available
+- cases/events/domain rows by spreadsheet ID, tab name, and row number
+
+Every Sheet row is also preserved in `sheet_source_rows` with tab name, row number, row hash, raw values, mapped table, and status.
+
+### 6. Production Rollout
+
+1. Run `npm run db:migrate` against Neon.
+2. Run `npm run migrate:sheets -- --dry-run`.
+3. Run `npm run migrate:sheets -- --apply`.
+4. Redeploy WardOS on Vercel with `DATABASE_URL` present.
+5. Confirm:
+
+```text
+https://wardos.jw4o.com/api/memory/database/postgres
+```
+
+The app reads Postgres first. Google Sheets remains available as fallback/manual import source through the existing Sheet integration.
+
+### 7. Rollback
+
+The Google Sheet is not modified by this migration.
+
+If migration fails before switching reads:
+
+1. Leave Vercel `DATABASE_URL` unset or remove it.
+2. WardOS falls back to Google Sheets/manual hosted sources.
+3. Inspect `sheet_import_runs` and `sheet_source_rows`.
+4. If needed, truncate only the new Neon tables and rerun after fixing the issue.
+
+If migration succeeds but app behavior is wrong:
+
+1. Remove or temporarily disable `DATABASE_URL` in Vercel.
+2. Redeploy.
+3. WardOS resumes Google Sheet fallback reads.
+4. Keep Neon data for inspection; do not delete until the issue is understood.
 
 ## Persistent Constituent Cases
 

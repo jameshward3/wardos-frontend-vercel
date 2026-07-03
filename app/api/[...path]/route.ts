@@ -15,6 +15,17 @@ import {
   memoryFields,
   summarizeConstituentRows,
 } from "../../../lib/google-sheets-store";
+import {
+  createPostgresCase,
+  createPostgresEvent,
+  loadPostgresCases,
+  loadPostgresConstituents,
+  loadPostgresDomain,
+  loadPostgresEvents,
+  loadPostgresMemory,
+  postgresStatus,
+  summarizePostgresConstituents,
+} from "../../../lib/postgres-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -861,6 +872,8 @@ function hostedWeatherFallback() {
 }
 
 async function hostedMemoryDatabase(limit: number) {
+  const postgres = await loadPostgresMemory(limit).catch(() => null);
+  if (postgres) return postgres;
   const rows = await loadMemoryRows();
   const byCategory = rows.reduce((acc: Record<string, number>, row) => {
     const category = String(row.category || "unknown");
@@ -1102,12 +1115,14 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
 
   if (route === "/health") return json({ ok: true, mode: "hosted-fallback" });
   if (route === "/memory/database/google-sheet") return json(await googleSheetRuntimeStatus());
+  if (route === "/memory/database/postgres") return json(await postgresStatus());
   if (route === "/memory/database") {
     const limit = Number(request.nextUrl.searchParams.get("limit") || "50");
     return json(await hostedMemoryDatabase(limit));
   }
   if (route === "/system/status") {
     const sheetStatus = await googleSheetRuntimeStatus();
+    const dbStatus = await postgresStatus();
     return json({
       ok: true,
       timezone: "America/New_York",
@@ -1127,6 +1142,7 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
       },
       safety: { local_first: true, auto_send_email: false, auto_publish: false, staff_review_required: true },
       integrations: {
+        postgres: dbStatus,
         github: "public_read_only",
         media_sources: mergedSourceConnections(store).length,
         google_sheet_memory: {
@@ -1140,10 +1156,18 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
       },
     });
   }
-  if (route === "/dashboard/overview") return json(dashboardOverview(store));
-  if (route === "/cases") return json([...store.cases].reverse());
+  if (route === "/dashboard/overview") {
+    const postgresCases = await loadPostgresCases().catch(() => null);
+    const postgresEvents = await loadPostgresEvents().catch(() => null);
+    return json(dashboardOverview({ ...store, cases: postgresCases || store.cases, events: postgresEvents || store.events }));
+  }
+  if (route === "/cases") {
+    const postgresRows = await loadPostgresCases().catch(() => null);
+    return json(postgresRows || [...store.cases].reverse());
+  }
   if (route === "/cases/export.csv") {
-    return new NextResponse(casesToCsv([...store.cases].reverse(), true), {
+    const postgresRows = await loadPostgresCases().catch(() => null);
+    return new NextResponse(casesToCsv(postgresRows || [...store.cases].reverse(), true), {
       headers: {
         "Cache-Control": "no-store",
         "Content-Type": "text/csv; charset=utf-8",
@@ -1153,7 +1177,7 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
   }
   if (route === "/legislation") return json([...store.legislation].reverse());
   if (route === "/budget-watch") return json([...store.budgetWatch].reverse());
-  if (route === "/development-projects") return json(SEEDED_DEVELOPMENTS);
+  if (route === "/development-projects") return json((await loadPostgresDomain("development").catch(() => null)) || SEEDED_DEVELOPMENTS);
   if (route === "/development-watch") {
     return json({
       source_url: "Orange Township Planning and Zoning Board pages",
@@ -1187,13 +1211,15 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
       watch_items: SEEDED_DEVELOPMENTS,
     });
   }
-  if (route === "/office-actions") return json([...store.officeActions].reverse());
-  if (route === "/events") return json([...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || ""))));
-  if (route === "/media-mentions") return json(store.mediaMentions.length ? [...store.mediaMentions].reverse() : SEEDED_MEDIA_MENTIONS);
-  if (route === "/source-connections") return json(mergedSourceConnections(store).reverse());
-  if (route === "/staff/users") return json(store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS);
+  if (route === "/office-actions") return json((await loadPostgresDomain("office_actions").catch(() => null)) || [...store.officeActions].reverse());
+  if (route === "/events") return json((await loadPostgresEvents().catch(() => null)) || [...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || ""))));
+  if (route === "/media-mentions") return json((await loadPostgresDomain("media").catch(() => null)) || (store.mediaMentions.length ? [...store.mediaMentions].reverse() : SEEDED_MEDIA_MENTIONS));
+  if (route === "/source-connections") return json((await loadPostgresDomain("sources").catch(() => null)) || mergedSourceConnections(store).reverse());
+  if (route === "/staff/users") return json((await loadPostgresDomain("staff").catch(() => null)) || (store.staffUsers.length ? [...store.staffUsers].reverse() : SEEDED_STAFF_USERS));
   if (route === "/staff/roles") return json({ admin: "Administrator", strategy_advisor: "Strategy Advisor" });
   if (route === "/constituents") {
+    const postgresRows = await loadPostgresConstituents(request).catch(() => null);
+    if (postgresRows) return json(postgresRows);
     if (hasGoogleSheetStore()) {
       const rows = await loadConstituentsFromSheet();
       return json(filterConstituentRows(rows, request));
@@ -1201,6 +1227,8 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
     return json([]);
   }
   if (route === "/constituents/summary") {
+    const postgresSummary = await summarizePostgresConstituents().catch(() => null);
+    if (postgresSummary) return json(postgresSummary);
     if (hasGoogleSheetStore()) {
       const rows = await loadConstituentsFromSheet();
       const summary = summarizeConstituentRows(rows);
@@ -1227,7 +1255,11 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
     });
   }
   if (route === "/media-monitor/config") return json(SEEDED_MEDIA_CONFIG);
-  if (route === "/public-safety") return json(publicSafetyDashboard(store));
+  if (route === "/public-safety") {
+    const postgresRows = await loadPostgresDomain("public_safety").catch(() => null);
+    if (postgresRows) return json(publicSafetyDashboard({ ...store, publicSafetyIncidents: postgresRows }));
+    return json(publicSafetyDashboard(store));
+  }
   if (route === "/weather/today") {
     return json(await hostedWeather());
   }
@@ -1239,7 +1271,8 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
     return json({ ok: false, error: `Unknown GitHub integration: ${name}` }, 404);
   }
   if (route === "/city-calendar" || route === "/council-meetings") {
-    const events = [...store.events, ...SEEDED_MEETINGS].sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || "")));
+    const postgresEvents = await loadPostgresEvents().catch(() => null);
+    const events = (postgresEvents || [...store.events, ...SEEDED_MEETINGS]).sort((a, b) => String(a.starts_at || "").localeCompare(String(b.starts_at || "")));
     return json({ source_url: "https://orangenj.gov/Calendar.aspx", fetched_at: "2026-06-04T22:10:52.036746-04:00", events, meetings: events });
   }
   if (route === "/city-bulletins") {
@@ -1273,6 +1306,8 @@ export async function POST(request: NextRequest, context: ApiRouteContext) {
   let row: StoredRow | null = null;
 
   if (route === "/cases") {
+    const postgresRow = await createPostgresCase(payload).catch(() => null);
+    if (postgresRow) return json(postgresRow, 201);
     const existingCases = await loadCases(store);
     row = createRow(store, { status: "open", priority: "normal", ...payload });
     store.cases = [...existingCases.rows, row];
@@ -1290,6 +1325,8 @@ export async function POST(request: NextRequest, context: ApiRouteContext) {
     row = createRow(store, { status: "draft", priority: "normal", ...payload });
     store.officeActions.push(row);
   } else if (route === "/events") {
+    const postgresRow = await createPostgresEvent(payload).catch(() => null);
+    if (postgresRow) return json(postgresRow, 201);
     const existingEvents = await loadEvents(store);
     row = createRow(store, { status: "scheduled", event_type: "office_event", ...payload });
     store.events = [...existingEvents.rows, row];
