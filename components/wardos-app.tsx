@@ -107,7 +107,7 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=web-sync-20260618a" strategy="afterInteractive" />
+      <Script src="/app.js?v=citywide-voters-20260703a" strategy="afterInteractive" />
     </>
   );
 }
