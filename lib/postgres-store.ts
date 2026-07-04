@@ -100,6 +100,16 @@ function caseRow(row) {
   };
 }
 
+function numericId(value: unknown) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function uuidLike(value: unknown) {
+  const text = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : "";
+}
+
 function eventRow(row) {
   return {
     id: row.legacyId || row.sourceRowNumber || row.id,
@@ -239,7 +249,20 @@ export async function loadPostgresConstituents(request: Request) {
   if (subgroup) filters.push(eq(constituents.subgroup, subgroup));
   if (q) {
     const pattern = `%${q}%`;
-    filters.push(or(ilike(constituents.fullName, pattern), ilike(constituents.street, pattern), ilike(constituents.voterId, pattern), ilike(constituents.notes, pattern)));
+    const addressPattern = `%${q.replace(/\s+/g, "%")}%`;
+    filters.push(or(
+      ilike(constituents.fullName, pattern),
+      ilike(sql`concat_ws(' ', ${constituents.streetNo}, ${constituents.street}, ${constituents.apt}, ${constituents.city}, ${constituents.state}, ${constituents.zipCode})`, addressPattern),
+      ilike(constituents.streetNo, pattern),
+      ilike(constituents.street, pattern),
+      ilike(constituents.apt, pattern),
+      ilike(constituents.city, pattern),
+      ilike(constituents.zipCode, pattern),
+      ilike(constituents.ward, pattern),
+      ilike(constituents.subgroup, pattern),
+      ilike(constituents.voterId, pattern),
+      ilike(constituents.notes, pattern),
+    ));
   }
   const rows = await db.select().from(constituents).where(and(...filters)).orderBy(constituents.ward, constituents.fullName).limit(limit);
   return rows.map(constituentRow);
@@ -276,7 +299,6 @@ export async function summarizePostgresConstituents() {
     by_subgroup: bySubgroup,
     received,
     outstanding,
-    mailin_may_2026: Object.entries(bySubgroup).reduce((sum, [name, count]) => sum + (/mail-?in/i.test(name) ? count : 0), 0),
     average_days_to_return: "N/A",
     source: "postgres",
   };
@@ -318,6 +340,38 @@ export async function createPostgresCase(payload: Record<string, unknown>) {
     updatedAt: now,
   }).returning();
   return { ...caseRow(row), persistent: true, source: "postgres" };
+}
+
+export async function deletePostgresCase(caseId: string, payload: Record<string, unknown> = {}) {
+  if (!hasPostgresStore()) return null;
+  const confirmation = String(payload.confirmation || payload.confirm || "").trim().toUpperCase();
+  if (confirmation !== "DELETE") return { ok: false, status: 400, error: "Deletion requires confirmation value DELETE." };
+
+  const db = wardosDb();
+  const now = new Date();
+  const id = uuidLike(caseId);
+  const legacyId = numericId(caseId);
+  const filters = [sql`${constituentCases.deletedAt} is null`];
+  if (id) filters.push(eq(constituentCases.id, id));
+  else if (legacyId !== null) filters.push(or(eq(constituentCases.legacyId, legacyId), eq(constituentCases.sourceRowNumber, legacyId)));
+  else return { ok: false, status: 400, error: "Invalid case id." };
+
+  const [row] = await db.update(constituentCases).set({
+    deletedAt: now,
+    updatedAt: now,
+    status: "deleted",
+  }).where(and(...filters)).returning();
+
+  if (!row) return { ok: false, status: 404, error: "Case not found." };
+  await db.insert(auditLogs).values({
+    actor: String(payload.actor || "wardos_user"),
+    action: "delete_case",
+    entityType: "constituent_case",
+    entityId: String(caseId),
+    detail: { case: caseRow(row), deletion: "soft_delete" },
+    source: "wardos_web",
+  });
+  return { ok: true, status: 200, deleted: true, case: caseRow(row), persistent: true, source: "postgres" };
 }
 
 export async function loadPostgresEvents() {

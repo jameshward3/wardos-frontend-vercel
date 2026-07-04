@@ -18,6 +18,7 @@ import {
 import {
   createPostgresCase,
   createPostgresEvent,
+  deletePostgresCase,
   loadPostgresCases,
   loadPostgresConstituents,
   loadPostgresDomain,
@@ -195,13 +196,12 @@ const EVENT_FIELDS = [
 ] as const;
 
 const CONSTITUENT_SUMMARY = {
-  total: 638,
-  by_status: { Received: 252, Outstanding: 386 },
-  by_subgroup: { "May 2026 Mail-In Voters": 638 },
-  by_ward: { South: 638 },
-  mailin_may_2026: 638,
-  received: 252,
-  outstanding: 386,
+  total: 0,
+  by_status: {},
+  by_subgroup: {},
+  by_ward: {},
+  received: 0,
+  outstanding: 0,
   average_days_to_return: 29.6,
 };
 
@@ -1232,11 +1232,7 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
     if (hasGoogleSheetStore()) {
       const rows = await loadConstituentsFromSheet();
       const summary = summarizeConstituentRows(rows);
-      return json({
-        ...summary,
-        mailin_may_2026: Object.entries(summary.by_subgroup).reduce((total, [name, count]) => total + (/mail-?in/i.test(name) ? count : 0), 0),
-        average_days_to_return: "N/A",
-      });
+      return json({ ...summary, average_days_to_return: "N/A" });
     }
     return json(CONSTITUENT_SUMMARY);
   }
@@ -1315,6 +1311,19 @@ export async function POST(request: NextRequest, context: ApiRouteContext) {
     else if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);
     return json({ ...row, status: row.status || "created", persistent: existingCases.persistent }, 201);
+  } else if (route.match(/^\/cases\/[^/]+\/delete$/)) {
+    const caseId = route.split("/")[2];
+    const postgresResult = await deletePostgresCase(caseId, payload).catch((error) => ({ ok: false, status: 500, error: error instanceof Error ? error.message : String(error) }));
+    if (postgresResult) return json(postgresResult.ok ? postgresResult : { error: postgresResult.error }, postgresResult.status || (postgresResult.ok ? 200 : 500));
+    if (String(payload.confirmation || "").trim().toUpperCase() !== "DELETE") return json({ error: "Deletion requires confirmation value DELETE." }, 400);
+    const existingCases = await loadCases(store);
+    const numericId = Number(caseId);
+    const before = existingCases.rows.length;
+    store.cases = existingCases.rows.filter((item) => Number(item.id) !== numericId);
+    if (store.cases.length === before) return json({ error: "Case not found." }, 404);
+    if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
+    await writeStore(store);
+    return json({ deleted: true, persistent: existingCases.persistent });
   } else if (route === "/legislation") {
     row = createRow(store, { status: "tracking", ...payload });
     store.legislation.push(row);

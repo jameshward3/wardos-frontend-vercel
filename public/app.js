@@ -343,7 +343,7 @@ async function updateCase(id, patch) {
 }
 
 async function deleteCase(id) {
-  await postJson(`/cases/${id}/delete`, {});
+  await postJson(`/cases/${id}/delete`, { confirmation: "DELETE" });
   state.cases = await getJson("/cases", state.cases);
   state.caseSummary = await getJson("/cases/summary", state.caseSummary);
   if (state.selectedCaseId === id) {
@@ -401,7 +401,7 @@ function mergeConstituentSearch(rows) {
     const key = row.voter_id || row.id || `${row.full_name}:${row.street_no}:${row.street}:${row.apt}`;
     if (key) byKey.set(String(key), row);
   });
-  state.constituentSearch = Array.from(byKey.values()).slice(0, 2000);
+  state.constituentSearch = Array.from(byKey.values()).slice(0, 50000);
 }
 
 function scheduleConstituentDeepSearch(query) {
@@ -4143,9 +4143,12 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-delete-case]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const id = Number(button.dataset.deleteCase);
-      const row = state.cases.find((item) => item.id === id);
-      if (!window.confirm(`Delete case ${row?.case_number || `#${id}`}? This removes its notes, communications, and files. This cannot be undone.`)) return;
+      const id = button.dataset.deleteCase;
+      const row = state.cases.find((item) => String(item.id) === String(id));
+      const label = row?.case_number || `#${id}`;
+      if (!window.confirm(`Delete case ${label}? This removes it from active dashboards but keeps an audit trail.`)) return;
+      const typed = window.prompt(`Final confirmation for ${label}: type DELETE to remove this case from active records.`);
+      if (String(typed || "").trim().toUpperCase() !== "DELETE") return;
       try {
         await deleteCase(id);
         render();
