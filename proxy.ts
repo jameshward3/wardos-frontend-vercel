@@ -1,19 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasValidSession } from "./lib/session";
 
-const PUBLIC_PATHS = ["/login", "/logout", "/api/login", "/api/auth/google", "/api/voter-intel", "/voter-intel"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/logout",
+  "/app.js",
+  "/assets",
+  "/api/login",
+  "/api/auth/google",
+  "/api/voter-intel",
+  "/voter-intel",
+  "/ward-report",
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isAuthenticated = await hasValidSession(request);
+  // /ward-report is a public newsletter meant to be iframe-embedded on
+  // jw4o.com (Squarespace); next.config.mjs already scopes its
+  // frame-ancestors CSP to that use, but this proxy unconditionally set
+  // X-Frame-Options: DENY on every response, which would silently override
+  // that and keep blocking the embed. It also gets a cacheable Cache-Control
+  // instead of "private, no-store" since it's public, non-personalized
+  // content that may see real traffic via the embed.
+  const isWardReport = pathname === "/ward-report" || pathname.startsWith("/ward-report/");
   const responseHeaders = new Headers({
-    "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)",
-    "Cache-Control": pathname.startsWith("/api/auth/session") ? "no-store" : "private, no-store",
+    "Cache-Control": pathname.startsWith("/api/auth/session")
+      ? "no-store"
+      : isWardReport
+        ? "public, max-age=60, stale-while-revalidate=300"
+        : "private, no-store",
   });
+  if (!isWardReport) {
+    responseHeaders.set("X-Frame-Options", "DENY");
+  }
 
   if (pathname === "/login" && isAuthenticated) {
     const response = NextResponse.redirect(new URL("/dashboard", request.url));
