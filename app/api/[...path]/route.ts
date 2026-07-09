@@ -858,6 +858,100 @@ function filterConstituentRows(rows: Array<Record<string, string>>, request: Nex
   return filtered.slice(0, limit);
 }
 
+function normalizeLookup(value: unknown) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function hostedConstituentAddress(row: Record<string, unknown>) {
+  return [
+    row.street_no,
+    row.street,
+    row.apt ? `Apt ${row.apt}` : "",
+    row.city,
+    row.state,
+    row.zip_code || row.zip,
+  ].filter(Boolean).join(" ");
+}
+
+function hostedConstituentAddressKey(row: Record<string, unknown>) {
+  return normalizeLookup([row.street_no, row.street, row.apt, row.city, row.state, row.zip_code || row.zip].filter(Boolean).join(" "));
+}
+
+function hostedRowIdentity(row: Record<string, unknown>) {
+  return normalizeLookup([row.id, row.voter_id, row.full_name, hostedConstituentAddress(row)].join(" "));
+}
+
+async function loadHostedConstituentRows(request: NextRequest) {
+  const allConstituentsUrl = new URL(request.url);
+  allConstituentsUrl.search = "";
+  allConstituentsUrl.searchParams.set("limit", "50000");
+  const postgresRows = await loadPostgresConstituents(new Request(allConstituentsUrl.toString())).catch(() => null);
+  if (postgresRows) return postgresRows;
+  if (hasGoogleSheetStore()) return loadConstituentsFromSheet();
+  return [];
+}
+
+async function hostedConstituentFile(request: NextRequest, store: Store) {
+  const rows = await loadHostedConstituentRows(request);
+  const params = request.nextUrl.searchParams;
+  const constituentId = params.get("constituent_id")?.trim() || "";
+  const name = params.get("name")?.trim() || "";
+  const address = params.get("address")?.trim() || "";
+  let primary = rows.find((row) => String(row.id || "") === constituentId || String(row.voter_id || "") === constituentId);
+  if (!primary && name) primary = rows.find((row) => normalizeLookup(row.full_name) === normalizeLookup(name));
+  if (!primary && address) {
+    const target = normalizeLookup(address);
+    primary = rows.find((row) => normalizeLookup(hostedConstituentAddress(row)) === target || hostedConstituentAddressKey(row) === target);
+  }
+  if (!primary) return null;
+
+  const resolvedAddress = address || hostedConstituentAddress(primary);
+  const primaryAddressKey = hostedConstituentAddressKey(primary);
+  const resolvedAddressKey = normalizeLookup(resolvedAddress);
+  const seen = new Set<string>();
+  const residents = rows.filter((row) => {
+    const key = hostedConstituentAddressKey(row);
+    return key && (key === primaryAddressKey || key === resolvedAddressKey);
+  }).filter((row) => {
+    const identity = hostedRowIdentity(row);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+  if (!residents.some((row) => hostedRowIdentity(row) === hostedRowIdentity(primary))) residents.unshift(primary);
+
+  const residentNames = new Set(residents.map((row) => normalizeLookup(row.full_name)).filter(Boolean));
+  const residentAddressKeys = new Set(residents.map(hostedConstituentAddressKey).filter(Boolean));
+  const postgresCases = await loadPostgresCases().catch(() => null);
+  const loadedCases = postgresCases ? { rows: postgresCases } : await loadCases(store);
+  const matchedCases = loadedCases.rows.filter((row) => {
+    const nameKey = normalizeLookup(row.constituent_name);
+    const addressKey = normalizeLookup(row.address_line);
+    return residentNames.has(nameKey) || residentAddressKeys.has(addressKey) || (!!resolvedAddressKey && addressKey === resolvedAddressKey);
+  });
+  const notes = matchedCases.flatMap((row) => (Array.isArray(row._notes) ? row._notes : []).map((note) => ({
+    ...note,
+    case_number: row.case_number || hostedCaseNumber(row),
+    case_topic: row.topic || "",
+  })));
+  const communications = matchedCases.flatMap((row) => (Array.isArray(row._communications) ? row._communications : []).map((communication) => ({
+    ...communication,
+    case_number: row.case_number || hostedCaseNumber(row),
+    case_topic: row.topic || "",
+  })));
+  const activity = matchedCases.flatMap((row) => (Array.isArray(row._activity) ? row._activity : []));
+  return {
+    primary,
+    residents,
+    address: resolvedAddress,
+    cases: matchedCases,
+    notes,
+    communications,
+    attachments: [],
+    activity,
+  };
+}
+
 function hostedWeatherFallback() {
   const updatedAt = new Date().toISOString();
   return {
@@ -1280,6 +1374,11 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
       return json(filterConstituentRows(rows, request));
     }
     return json([]);
+  }
+  if (route === "/constituents/file") {
+    const file = await hostedConstituentFile(request, store);
+    if (!file) return json({ error: "Constituent not found." }, 404);
+    return json(file);
   }
   if (route === "/constituents/summary") {
     const postgresSummary = await summarizePostgresConstituents().catch(() => null);
