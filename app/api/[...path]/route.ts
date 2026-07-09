@@ -16,9 +16,14 @@ import {
   summarizeConstituentRows,
 } from "../../../lib/google-sheets-store";
 import {
+  addPostgresCaseCommunication,
+  addPostgresCaseNote,
+  createPostgresCaseAiSummary,
   createPostgresCase,
+  createPostgresCaseWorkOrder,
   createPostgresEvent,
   deletePostgresCase,
+  loadPostgresCaseDetail,
   loadPostgresCases,
   loadPostgresConstituents,
   loadPostgresDomain,
@@ -26,6 +31,8 @@ import {
   loadPostgresMemory,
   postgresStatus,
   summarizePostgresConstituents,
+  updatePostgresCase,
+  updatePostgresCaseNote,
 } from "../../../lib/postgres-store";
 
 export const runtime = "nodejs";
@@ -991,6 +998,45 @@ function createRow(store: Store, payload: Record<string, unknown>) {
   return row;
 }
 
+function hostedCaseNumber(row: StoredRow) {
+  const year = new Date(String(row.created_at || Date.now())).getFullYear();
+  return `C-${year}-${String(row.id).slice(0, 8)}`;
+}
+
+function hostedCaseDetail(row: StoredRow) {
+  const notes = Array.isArray(row._notes) ? row._notes : [];
+  const communications = Array.isArray(row._communications) ? row._communications : [];
+  const activity = Array.isArray(row._activity) ? row._activity : [];
+  return {
+    case: {
+      ...row,
+      case_number: row.case_number || hostedCaseNumber(row),
+      notes_count: notes.length,
+      communications_count: communications.length,
+      attachments_count: 0,
+    },
+    notes,
+    communications,
+    attachments: [],
+    activity,
+    linked_cases: [],
+  };
+}
+
+function findHostedCase(rows: StoredRow[], caseId: string) {
+  return rows.find((item) => String(item.id) === caseId || String(Number(item.id)) === caseId);
+}
+
+function hostedActivity(action: string, detail: string, actor = "wardos_user") {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    actor,
+    action,
+    detail,
+    created_at: new Date().toISOString(),
+  };
+}
+
 function dashboardOverview(store: Store) {
   const openCases = store.cases.filter((row) => row.status !== "closed");
   const seededMedia = store.mediaMentions.length ? store.mediaMentions : SEEDED_MEDIA_MENTIONS;
@@ -1175,6 +1221,15 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
       },
     });
   }
+  if (route.match(/^\/cases\/[^/]+$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresDetail = await loadPostgresCaseDetail(caseId).catch(() => null);
+    if (postgresDetail) return json(postgresDetail);
+    const existingCases = await loadCases(store);
+    const row = findHostedCase(existingCases.rows, caseId);
+    if (!row) return json({ error: "Case not found." }, 404);
+    return json(hostedCaseDetail(row));
+  }
   if (route === "/legislation") return json([...store.legislation].reverse());
   if (route === "/budget-watch") return json([...store.budgetWatch].reverse());
   if (route === "/development-projects") return json((await loadPostgresDomain("development").catch(() => null)) || SEEDED_DEVELOPMENTS);
@@ -1311,15 +1366,104 @@ export async function POST(request: NextRequest, context: ApiRouteContext) {
     else if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);
     return json({ ...row, status: row.status || "created", persistent: existingCases.persistent }, 201);
+  } else if (route.match(/^\/cases\/[^/]+$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresResult = await updatePostgresCase(caseId, payload).catch((error) => ({ ok: false, status: 500, error: error instanceof Error ? error.message : String(error) }));
+    if (postgresResult) return json(postgresResult.ok === false ? { error: postgresResult.error } : postgresResult, postgresResult.status || 200);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    Object.assign(caseRow, payload, { updated_at: new Date().toISOString() });
+    caseRow._activity = [hostedActivity("update", `Updated ${Object.keys(payload).join(", ")}`), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    store.cases = existingCases.rows;
+    if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
+    await writeStore(store);
+    return json(caseRow);
+  } else if (route.match(/^\/cases\/[^/]+\/notes$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresNote = await addPostgresCaseNote(caseId, payload).catch(() => null);
+    if (postgresNote) return json(postgresNote, 201);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    const note = { id: `${Date.now()}`, case_id: caseId, author: String(payload.author || payload.actor || "wardos_user"), body: String(payload.body || ""), created_at: new Date().toISOString(), edited_at: "" };
+    caseRow._notes = [note, ...(Array.isArray(caseRow._notes) ? caseRow._notes : [])];
+    caseRow._activity = [hostedActivity("note_added", note.body, note.author), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    store.cases = existingCases.rows;
+    await writeStore(store);
+    return json(note, 201);
+  } else if (route.match(/^\/cases\/[^/]+\/notes\/[^/]+$/)) {
+    const parts = route.split("/");
+    const caseId = decodeURIComponent(parts[2]);
+    const noteId = decodeURIComponent(parts[4]);
+    const postgresNote = await updatePostgresCaseNote(caseId, noteId, payload).catch(() => null);
+    if (postgresNote) return json(postgresNote);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    const notes = Array.isArray(caseRow._notes) ? caseRow._notes : [];
+    const note = notes.find((item) => String(item.id) === noteId);
+    if (!note) return json({ error: "Note not found." }, 404);
+    note.body = String(payload.body || "");
+    note.edited_at = new Date().toISOString();
+    caseRow._activity = [hostedActivity("note_edited", note.body, String(note.author || "wardos_user")), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    await writeStore(store);
+    return json(note);
+  } else if (route.match(/^\/cases\/[^/]+\/communications$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresCommunication = await addPostgresCaseCommunication(caseId, payload).catch(() => null);
+    if (postgresCommunication) return json(postgresCommunication, 201);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    const communication = {
+      id: `${Date.now()}`,
+      case_id: caseId,
+      channel: String(payload.channel || "phone"),
+      direction: String(payload.direction || "outbound"),
+      summary: String(payload.summary || ""),
+      author: String(payload.author || payload.actor || "wardos_user"),
+      created_at: new Date().toISOString(),
+    };
+    caseRow._communications = [communication, ...(Array.isArray(caseRow._communications) ? caseRow._communications : [])];
+    caseRow._activity = [hostedActivity("communication_logged", communication.summary, communication.author), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    await writeStore(store);
+    return json(communication, 201);
+  } else if (route.match(/^\/cases\/[^/]+\/ai-summary$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresSummary = await createPostgresCaseAiSummary(caseId, payload).catch(() => null);
+    if (postgresSummary) return json(postgresSummary);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    const summary = `${caseRow.topic || "This case"} is logged for ${caseRow.constituent_name || "a constituent"}. Priority is ${caseRow.priority || "normal"} and status is ${caseRow.status || "open"}.`;
+    caseRow.ai_summary = summary;
+    caseRow.ai_summary_generated_at = new Date().toISOString();
+    caseRow._activity = [hostedActivity("ai_summary_generated", summary), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    await writeStore(store);
+    return json({ ok: true, ai_summary: summary, ai_summary_generated_at: caseRow.ai_summary_generated_at });
+  } else if (route.match(/^\/cases\/[^/]+\/work-order$/)) {
+    const caseId = decodeURIComponent(route.split("/")[2]);
+    const postgresAction = await createPostgresCaseWorkOrder(caseId, payload).catch(() => null);
+    if (postgresAction) return json(postgresAction, 201);
+    const existingCases = await loadCases(store);
+    const caseRow = findHostedCase(existingCases.rows, caseId);
+    if (!caseRow) return json({ error: "Case not found." }, 404);
+    row = createRow(store, { title: `Work Order: ${caseRow.topic || "Constituent need"}`, action_type: "work_order", status: "draft", priority: caseRow.priority || "normal", owner: caseRow.assigned_to || caseRow.department || "", source_type: "constituent_case", source_id: caseId, notes: caseRow.notes || "" });
+    store.officeActions.push(row);
+    caseRow._activity = [hostedActivity("converted_to_work_order", `Office action #${row.id}`), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
+    await writeStore(store);
+    return json(row, 201);
+  } else if (route.match(/^\/cases\/[^/]+\/attachments$/)) {
+    return json({ error: "File uploads require the shared FastAPI backend or object storage." }, 501);
   } else if (route.match(/^\/cases\/[^/]+\/delete$/)) {
     const caseId = route.split("/")[2];
     const postgresResult = await deletePostgresCase(caseId, payload).catch((error) => ({ ok: false, status: 500, error: error instanceof Error ? error.message : String(error) }));
     if (postgresResult) return json(postgresResult.ok ? postgresResult : { error: postgresResult.error }, postgresResult.status || (postgresResult.ok ? 200 : 500));
     if (String(payload.confirmation || "").trim().toUpperCase() !== "DELETE") return json({ error: "Deletion requires confirmation value DELETE." }, 400);
     const existingCases = await loadCases(store);
-    const numericId = Number(caseId);
     const before = existingCases.rows.length;
-    store.cases = existingCases.rows.filter((item) => Number(item.id) !== numericId);
+    store.cases = existingCases.rows.filter((item) => String(item.id) !== caseId);
     if (store.cases.length === before) return json({ error: "Case not found." }, 404);
     if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
     await writeStore(store);

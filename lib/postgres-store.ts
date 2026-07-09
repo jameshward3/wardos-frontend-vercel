@@ -45,6 +45,12 @@ function numberOrBlank(value: unknown) {
   return String(value);
 }
 
+function numericOrBlank(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? String(parsed) : "";
+}
+
 function constituentRow(row) {
   return {
     id: row.legacyId || row.sourceRowNumber || row.id,
@@ -75,8 +81,10 @@ function constituentRow(row) {
 }
 
 function caseRow(row) {
+  const id = row.legacyId || row.sourceRowNumber || row.id;
   return {
-    id: row.legacyId || row.sourceRowNumber || row.id,
+    id,
+    case_number: `C-${new Date(row.createdAt || Date.now()).getFullYear()}-${String(id).slice(0, 8)}`,
     created_at: iso(row.createdAt),
     constituent_name: row.constituentName || "",
     address_line: row.addressLine || "",
@@ -95,6 +103,8 @@ function caseRow(row) {
     longitude: numberOrBlank(row.longitude),
     due_at: iso(row.dueAt),
     resolved_at: iso(row.resolvedAt),
+    ai_summary: row.aiSummary || "",
+    ai_summary_generated_at: iso(row.aiSummaryGeneratedAt),
     source_tab_name: row.sourceTabName,
     source_row_number: row.sourceRowNumber,
   };
@@ -108,6 +118,16 @@ function numericId(value: unknown) {
 function uuidLike(value: unknown) {
   const text = String(value || "").trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : "";
+}
+
+function caseIdentityFilters(caseId: string) {
+  const id = uuidLike(caseId);
+  const legacyId = numericId(caseId);
+  const filters = [sql`${constituentCases.deletedAt} is null`];
+  if (id) filters.push(eq(constituentCases.id, id));
+  else if (legacyId !== null) filters.push(or(eq(constituentCases.legacyId, legacyId), eq(constituentCases.sourceRowNumber, legacyId)));
+  else return null;
+  return filters;
 }
 
 function eventRow(row) {
@@ -342,6 +362,261 @@ export async function createPostgresCase(payload: Record<string, unknown>) {
   return { ...caseRow(row), persistent: true, source: "postgres" };
 }
 
+function auditDetailText(detail: unknown) {
+  if (!detail || typeof detail !== "object") return String(detail || "");
+  const payload = detail as Record<string, unknown>;
+  return String(payload.body || payload.summary || payload.text || payload.message || payload.field || JSON.stringify(payload));
+}
+
+function auditActivityRow(row) {
+  return {
+    id: row.id,
+    actor: row.actor || "wardos_user",
+    action: row.action,
+    detail: auditDetailText(row.detail),
+    created_at: iso(row.createdAt),
+  };
+}
+
+function noteRowsFromAudit(rows) {
+  const notes = new Map<string, Record<string, unknown>>();
+  rows
+    .filter((row) => row.action === "note_added" || row.action === "note_edited")
+    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+    .forEach((row) => {
+      const detail = (row.detail || {}) as Record<string, unknown>;
+      const noteId = String(detail.note_id || row.id);
+      const existing = notes.get(noteId);
+      notes.set(noteId, {
+        id: noteId,
+        case_id: row.entityId,
+        author: row.actor || "wardos_user",
+        body: String(detail.body || detail.text || ""),
+        created_at: existing?.created_at || iso(row.createdAt),
+        edited_at: row.action === "note_edited" ? iso(row.createdAt) : existing?.edited_at || "",
+      });
+    });
+  return [...notes.values()].reverse();
+}
+
+function communicationRowsFromAudit(rows) {
+  return rows
+    .filter((row) => row.action === "communication_logged")
+    .map((row) => {
+      const detail = (row.detail || {}) as Record<string, unknown>;
+      return {
+        id: row.id,
+        case_id: row.entityId,
+        channel: String(detail.channel || "phone"),
+        direction: String(detail.direction || "outbound"),
+        summary: String(detail.summary || ""),
+        author: row.actor || "wardos_user",
+        created_at: iso(row.createdAt),
+      };
+    });
+}
+
+async function findPostgresCase(caseId: string) {
+  if (!hasPostgresStore()) return null;
+  const filters = caseIdentityFilters(caseId);
+  if (!filters) return null;
+  const db = wardosDb();
+  const [row] = await db.select().from(constituentCases).where(and(...filters)).limit(1);
+  return row || null;
+}
+
+async function caseAuditRows(db, row, requestedId: string) {
+  const ids = [
+    requestedId,
+    row.id,
+    row.legacyId,
+    row.sourceRowNumber,
+  ].filter((value) => value !== null && value !== undefined && value !== "").map(String);
+  const filters = ids.map((id) => eq(auditLogs.entityId, id));
+  return db.select().from(auditLogs)
+    .where(and(eq(auditLogs.entityType, "constituent_case"), or(...filters)))
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(200);
+}
+
+export async function loadPostgresCaseDetail(caseId: string) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const db = wardosDb();
+  const audits = await caseAuditRows(db, row, caseId);
+  const noteRows = noteRowsFromAudit(audits);
+  const communicationRows = communicationRowsFromAudit(audits);
+  const latestSummary = audits.find((audit) => audit.action === "ai_summary_generated");
+  const casePayload = {
+    ...caseRow(row),
+    ai_summary: latestSummary ? auditDetailText(latestSummary.detail) : "",
+    ai_summary_generated_at: latestSummary ? iso(latestSummary.createdAt) : "",
+    notes_count: noteRows.length,
+    communications_count: communicationRows.length,
+    attachments_count: 0,
+  };
+  return {
+    case: casePayload,
+    notes: noteRows,
+    communications: communicationRows,
+    attachments: [],
+    activity: audits.map(auditActivityRow),
+    linked_cases: [],
+  };
+}
+
+export async function updatePostgresCase(caseId: string, payload: Record<string, unknown>) {
+  if (!hasPostgresStore()) return null;
+  const filters = caseIdentityFilters(caseId);
+  if (!filters) return { ok: false, status: 400, error: "Invalid case id." };
+  const fieldMap: Record<string, string> = {
+    constituent_name: "constituentName",
+    address_line: "addressLine",
+    phone: "phone",
+    email: "email",
+    topic: "topic",
+    category: "category",
+    department: "department",
+    assigned_to: "assignedTo",
+    ward: "ward",
+    source: "source",
+    status: "status",
+    priority: "priority",
+    notes: "notes",
+  };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  Object.entries(fieldMap).forEach(([apiField, dbField]) => {
+    if (Object.prototype.hasOwnProperty.call(payload, apiField)) updates[dbField] = String(payload[apiField] || "");
+  });
+  if (Object.prototype.hasOwnProperty.call(payload, "latitude")) updates.latitude = numericOrBlank(payload.latitude) || null;
+  if (Object.prototype.hasOwnProperty.call(payload, "longitude")) updates.longitude = numericOrBlank(payload.longitude) || null;
+  if (Object.prototype.hasOwnProperty.call(payload, "due_at")) updates.dueAt = payload.due_at ? new Date(String(payload.due_at)) : null;
+  if (Object.prototype.hasOwnProperty.call(payload, "status")) {
+    const status = String(payload.status || "");
+    updates.resolvedAt = ["resolved", "closed"].includes(status) ? new Date() : null;
+  }
+
+  const db = wardosDb();
+  const [row] = await db.update(constituentCases).set(updates).where(and(...filters)).returning();
+  if (!row) return { ok: false, status: 404, error: "Case not found." };
+  await db.insert(auditLogs).values({
+    actor: String(payload.actor || "wardos_user"),
+    action: "update",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: { fields: Object.keys(updates).filter((key) => key !== "updatedAt") },
+    source: "wardos_web",
+  });
+  return { ok: true, status: 200, ...caseRow(row), persistent: true, source: "postgres" };
+}
+
+export async function addPostgresCaseNote(caseId: string, payload: Record<string, unknown>) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const db = wardosDb();
+  const [audit] = await db.insert(auditLogs).values({
+    actor: String(payload.author || payload.actor || "wardos_user"),
+    action: "note_added",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: { body: String(payload.body || "") },
+    source: "wardos_web",
+  }).returning();
+  const [note] = noteRowsFromAudit([audit]);
+  return { ...note, persistent: true, source: "postgres" };
+}
+
+export async function updatePostgresCaseNote(caseId: string, noteId: string, payload: Record<string, unknown>) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const db = wardosDb();
+  const [audit] = await db.insert(auditLogs).values({
+    actor: String(payload.author || payload.actor || "wardos_user"),
+    action: "note_edited",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: { note_id: noteId, body: String(payload.body || "") },
+    source: "wardos_web",
+  }).returning();
+  const [note] = noteRowsFromAudit([audit]);
+  return { ...note, id: noteId, persistent: true, source: "postgres" };
+}
+
+export async function addPostgresCaseCommunication(caseId: string, payload: Record<string, unknown>) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const db = wardosDb();
+  const [audit] = await db.insert(auditLogs).values({
+    actor: String(payload.author || payload.actor || "wardos_user"),
+    action: "communication_logged",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: {
+      channel: String(payload.channel || "phone"),
+      direction: String(payload.direction || "outbound"),
+      summary: String(payload.summary || ""),
+    },
+    source: "wardos_web",
+  }).returning();
+  const [communication] = communicationRowsFromAudit([audit]);
+  return { ...communication, persistent: true, source: "postgres" };
+}
+
+export async function createPostgresCaseWorkOrder(caseId: string, payload: Record<string, unknown> = {}) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const db = wardosDb();
+  const now = new Date();
+  const [action] = await db.insert(officeActions).values({
+    title: `Work Order: ${row.topic}`,
+    actionType: "work_order",
+    status: "draft",
+    priority: row.priority || "normal",
+    owner: row.assignedTo || row.department || "",
+    dueAt: row.dueAt || null,
+    sourceType: "constituent_case",
+    sourceId: String(caseRow(row).id),
+    notes: row.notes || "",
+    payload: { case_id: String(caseRow(row).id) },
+    sourceSpreadsheetId: "wardos_postgres",
+    sourceTabName: "wardos_web",
+    sourceRowNumber: null,
+    sourceRowHash: "",
+    createdAt: now,
+    updatedAt: now,
+  }).returning();
+  await db.insert(auditLogs).values({
+    actor: String(payload.actor || "wardos_user"),
+    action: "converted_to_work_order",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: { office_action_id: action.id, title: action.title },
+    source: "wardos_web",
+  });
+  return { id: action.id, title: action.title, status: action.status, owner: action.owner, source_type: action.sourceType, source_id: action.sourceId, persistent: true };
+}
+
+export async function createPostgresCaseAiSummary(caseId: string, payload: Record<string, unknown> = {}) {
+  const row = await findPostgresCase(caseId);
+  if (!row) return null;
+  const summary = [
+    `${row.topic || "This case"} is logged for ${row.constituentName || "a constituent"}.`,
+    row.addressLine ? `Location: ${row.addressLine}.` : "",
+    `Priority is ${row.priority || "normal"} and status is ${row.status || "open"}.`,
+    row.department ? `Recommended next step: coordinate with ${row.department}.` : "Recommended next step: assign the responsible department and set a follow-up date.",
+  ].filter(Boolean).join(" ");
+  const db = wardosDb();
+  const [audit] = await db.insert(auditLogs).values({
+    actor: String(payload.actor || "wardos_user"),
+    action: "ai_summary_generated",
+    entityType: "constituent_case",
+    entityId: String(caseRow(row).id),
+    detail: { summary },
+    source: "wardos_web",
+  }).returning();
+  return { ok: true, ai_summary: summary, ai_summary_generated_at: iso(audit.createdAt), persistent: true, source: "postgres" };
+}
+
 export async function deletePostgresCase(caseId: string, payload: Record<string, unknown> = {}) {
   if (!hasPostgresStore()) return null;
   const confirmation = String(payload.confirmation || payload.confirm || "").trim().toUpperCase();
@@ -349,12 +624,8 @@ export async function deletePostgresCase(caseId: string, payload: Record<string,
 
   const db = wardosDb();
   const now = new Date();
-  const id = uuidLike(caseId);
-  const legacyId = numericId(caseId);
-  const filters = [sql`${constituentCases.deletedAt} is null`];
-  if (id) filters.push(eq(constituentCases.id, id));
-  else if (legacyId !== null) filters.push(or(eq(constituentCases.legacyId, legacyId), eq(constituentCases.sourceRowNumber, legacyId)));
-  else return { ok: false, status: 400, error: "Invalid case id." };
+  const filters = caseIdentityFilters(caseId);
+  if (!filters) return { ok: false, status: 400, error: "Invalid case id." };
 
   const [row] = await db.update(constituentCases).set({
     deletedAt: now,
