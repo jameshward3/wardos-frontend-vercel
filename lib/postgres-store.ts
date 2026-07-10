@@ -91,6 +91,70 @@ function constituentRow(row) {
   };
 }
 
+let constituentEnrichmentColumnsAvailable: boolean | null = null;
+
+async function hasConstituentEnrichmentColumns(db) {
+  if (constituentEnrichmentColumnsAvailable !== null) return constituentEnrichmentColumnsAvailable;
+  const rows = await db.execute(sql`
+    select count(*)::int as count
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'constituents'
+      and column_name in ('dob', 'party_affiliation', 'registration_date', 'gender', 'phone', 'voting_district')
+  `);
+  const count = Number(rows.rows?.[0]?.count || rows[0]?.count || 0);
+  constituentEnrichmentColumnsAvailable = count >= 6;
+  return constituentEnrichmentColumnsAvailable;
+}
+
+function constituentSelection(includeEnrichment: boolean) {
+  const base = {
+    id: constituents.id,
+    legacyId: constituents.legacyId,
+    voterId: constituents.voterId,
+    firstName: constituents.firstName,
+    lastName: constituents.lastName,
+    fullName: constituents.fullName,
+    streetNo: constituents.streetNo,
+    street: constituents.street,
+    apt: constituents.apt,
+    city: constituents.city,
+    state: constituents.state,
+    zipCode: constituents.zipCode,
+    ward: constituents.ward,
+    subgroup: constituents.subgroup,
+    voterStatus: constituents.voterStatus,
+    mailinRequestDate: constituents.mailinRequestDate,
+    mailinSentDate: constituents.mailinSentDate,
+    mailinReceivedDate: constituents.mailinReceivedDate,
+    daysToReturn: constituents.daysToReturn,
+    sourceFile: constituents.sourceFile,
+    notes: constituents.notes,
+    sourceSpreadsheetId: constituents.sourceSpreadsheetId,
+    sourceTabName: constituents.sourceTabName,
+    sourceRowNumber: constituents.sourceRowNumber,
+    sourceRowHash: constituents.sourceRowHash,
+    createdAt: constituents.createdAt,
+    updatedAt: constituents.updatedAt,
+    deletedAt: constituents.deletedAt,
+  };
+  if (!includeEnrichment) return base;
+  return {
+    ...base,
+    dob: constituents.dob,
+    partyAffiliation: constituents.partyAffiliation,
+    registrationDate: constituents.registrationDate,
+    gender: constituents.gender,
+    phone: constituents.phone,
+    votingDistrict: constituents.votingDistrict,
+    historicalSourceFile: constituents.historicalSourceFile,
+    historicalSourceYear: constituents.historicalSourceYear,
+    historicalMatchStatus: constituents.historicalMatchStatus,
+    historicalPayload: constituents.historicalPayload,
+    historicalEnrichedAt: constituents.historicalEnrichedAt,
+  };
+}
+
 function caseRow(row) {
   const id = row.legacyId || row.sourceRowNumber || row.id;
   return {
@@ -270,6 +334,7 @@ export async function loadPostgresMemory(limit = 50) {
 export async function loadPostgresConstituents(request: Request) {
   if (!hasPostgresStore()) return null;
   const db = wardosDb();
+  const includeEnrichment = await hasConstituentEnrichmentColumns(db);
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() || "";
   const ward = url.searchParams.get("ward")?.trim() || "";
@@ -281,7 +346,7 @@ export async function loadPostgresConstituents(request: Request) {
   if (q) {
     const pattern = `%${q}%`;
     const addressPattern = `%${q.replace(/\s+/g, "%")}%`;
-    filters.push(or(
+    const searchFilters = [
       ilike(constituents.fullName, pattern),
       ilike(sql`concat_ws(' ', ${constituents.streetNo}, ${constituents.street}, ${constituents.apt}, ${constituents.city}, ${constituents.state}, ${constituents.zipCode})`, addressPattern),
       ilike(constituents.streetNo, pattern),
@@ -290,16 +355,21 @@ export async function loadPostgresConstituents(request: Request) {
       ilike(constituents.city, pattern),
       ilike(constituents.zipCode, pattern),
       ilike(constituents.ward, pattern),
-      ilike(constituents.votingDistrict, pattern),
       ilike(constituents.subgroup, pattern),
       ilike(constituents.voterId, pattern),
-      ilike(constituents.phone, pattern),
-      ilike(constituents.partyAffiliation, pattern),
-      ilike(constituents.gender, pattern),
       ilike(constituents.notes, pattern),
-    ));
+    ];
+    if (includeEnrichment) {
+      searchFilters.push(
+        ilike(constituents.votingDistrict, pattern),
+        ilike(constituents.phone, pattern),
+        ilike(constituents.partyAffiliation, pattern),
+        ilike(constituents.gender, pattern),
+      );
+    }
+    filters.push(or(...searchFilters));
   }
-  const rows = await db.select().from(constituents).where(and(...filters)).orderBy(constituents.ward, constituents.fullName).limit(limit);
+  const rows = await db.select(constituentSelection(includeEnrichment)).from(constituents).where(and(...filters)).orderBy(constituents.ward, constituents.fullName).limit(limit);
   return rows.map(constituentRow);
 }
 
