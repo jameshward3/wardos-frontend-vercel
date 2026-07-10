@@ -116,6 +116,17 @@ export const constituents = pgTable(
     mailinSentDate: date("mailin_sent_date"),
     mailinReceivedDate: date("mailin_received_date"),
     daysToReturn: integer("days_to_return"),
+    dob: date("dob"),
+    partyAffiliation: text("party_affiliation").notNull().default(""),
+    registrationDate: date("registration_date"),
+    gender: text("gender").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    votingDistrict: text("voting_district").notNull().default(""),
+    historicalSourceFile: text("historical_source_file").notNull().default(""),
+    historicalSourceYear: integer("historical_source_year"),
+    historicalMatchStatus: text("historical_match_status").notNull().default(""),
+    historicalPayload: jsonb("historical_payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    historicalEnrichedAt: timestamp("historical_enriched_at", { withTimezone: true }),
     sourceFile: text("source_file").notNull().default(""),
     notes: text("notes").notNull().default(""),
     ...sourceColumns,
@@ -126,7 +137,9 @@ export const constituents = pgTable(
     uniqueIndex("uq_constituents_sheet_row").on(table.sourceSpreadsheetId, table.sourceTabName, table.sourceRowNumber),
     index("ix_constituents_ward_subgroup").on(table.ward, table.subgroup),
     index("ix_constituents_street_lookup").on(table.street, table.streetNo, table.zipCode),
-    index("ix_constituents_search").using("gin", sql`to_tsvector('english', coalesce(${table.fullName}, '') || ' ' || coalesce(${table.street}, '') || ' ' || coalesce(${table.notes}, '') || ' ' || coalesce(${table.voterId}, ''))`),
+    index("ix_constituents_voting_district").on(table.ward, table.votingDistrict),
+    index("ix_constituents_party_affiliation").on(table.partyAffiliation),
+    index("ix_constituents_search").using("gin", sql`to_tsvector('english', coalesce(${table.fullName}, '') || ' ' || coalesce(${table.street}, '') || ' ' || coalesce(${table.notes}, '') || ' ' || coalesce(${table.voterId}, '') || ' ' || coalesce(${table.phone}, '') || ' ' || coalesce(${table.partyAffiliation}, '') || ' ' || coalesce(${table.votingDistrict}, ''))`),
   ],
 );
 
@@ -437,4 +450,3 @@ export const caseRelations = relations(constituentCases, ({ one }) => ({
     references: [constituents.id],
   }),
 }));
-

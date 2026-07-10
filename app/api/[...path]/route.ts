@@ -846,7 +846,14 @@ function filterConstituentRows(rows: Array<Record<string, string>>, request: Nex
         row.zip_code,
         row.voter_id,
         row.ward,
+        row.voting_district,
+        row.district,
         row.subgroup,
+        row.dob,
+        row.registration_date,
+        row.gender,
+        row.phone,
+        row.party_affiliation,
         row.notes,
       ]
         .filter(Boolean)

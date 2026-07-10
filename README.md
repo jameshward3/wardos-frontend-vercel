@@ -162,6 +162,24 @@ The apply run upserts by stable source keys so repeated runs do not create dupli
 
 Every Sheet row is also preserved in `sheet_source_rows` with tab name, row number, row hash, raw values, mapped table, and status.
 
+### 5a. Enrich Current Voters From Historical Files
+
+Historical voter files must enrich only current active records. They must not create active constituents from old rows.
+
+After the database migration that adds historical enrichment columns is applied, run:
+
+```bash
+npm run import:voters:historical -- --file "/path/to/Voter File 2021 - Southward.xlsx" --dry-run
+```
+
+Review matched, moved/skipped, and ambiguous counts. Then apply:
+
+```bash
+npm run import:voters:historical -- --file "/path/to/Voter File 2021 - Southward.xlsx" --apply
+```
+
+The script matches by normalized name and address, fills only missing DOB, party, registration date, gender, phone, and voting district fields, and logs historical-only rows as moved/skipped without inserting them into the active directory.
+
 ### 6. Production Rollout
 
 1. Run `npm run db:migrate` against Neon.

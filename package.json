@@ -10,12 +10,14 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "migrate:sheets": "tsx scripts/migrate-google-sheets-to-postgres.ts",
-    "import:voters": "tsx scripts/import-citywide-voters-to-postgres.ts"
+    "import:voters": "tsx scripts/import-citywide-voters-to-postgres.ts",
+    "import:voters:historical": "tsx scripts/enrich-historical-southward-voters.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.2.9",
+    "pg": "^8.22.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "^2.15.0"
