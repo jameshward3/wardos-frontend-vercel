@@ -584,6 +584,9 @@ export async function updatePostgresCase(caseId: string, payload: Record<string,
   const db = wardosDb();
   const [row] = await db.update(constituentCases).set(updates).where(and(...filters)).returning();
   if (!row) return { ok: false, status: 404, error: "Case not found." };
+  // The case update is the primary operation. An older deployment may not have
+  // the audit table yet, so do not report a failed save after the case was
+  // already updated successfully.
   await db.insert(auditLogs).values({
     actor: String(payload.actor || "wardos_user"),
     action: "update",
@@ -591,7 +594,7 @@ export async function updatePostgresCase(caseId: string, payload: Record<string,
     entityId: String(caseRow(row).id),
     detail: { fields: Object.keys(updates).filter((key) => key !== "updatedAt") },
     source: "wardos_web",
-  });
+  }).catch(() => undefined);
   return { ok: true, status: 200, ...caseRow(row), persistent: true, source: "postgres" };
 }
 

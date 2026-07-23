@@ -1124,6 +1124,50 @@ function hostedCaseDetail(row: StoredRow) {
   };
 }
 
+function summarizeCases(rows: StoredRow[]) {
+  const now = Date.now();
+  const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+  const byCategory: Record<string, number> = {};
+  let open = 0;
+  let inProgress = 0;
+  let resolved30d = 0;
+  let overdue = 0;
+  let totalResolutionMs = 0;
+  let resolvedWithDuration = 0;
+
+  rows.forEach((row) => {
+    const status = String(row.status || "open").trim().toLowerCase();
+    const category = String(row.category || "").trim() || "Uncategorized";
+    byCategory[category] = (byCategory[category] || 0) + 1;
+
+    if (!["resolved", "closed"].includes(status)) open += 1;
+    if (["assigned", "in progress", "in_progress"].includes(status)) inProgress += 1;
+
+    const resolvedAt = Date.parse(String(row.resolved_at || ""));
+    const createdAt = Date.parse(String(row.created_at || ""));
+    if (Number.isFinite(resolvedAt) && resolvedAt >= thirtyDaysAgo) resolved30d += 1;
+    if (Number.isFinite(resolvedAt) && Number.isFinite(createdAt) && resolvedAt >= createdAt) {
+      totalResolutionMs += resolvedAt - createdAt;
+      resolvedWithDuration += 1;
+    }
+
+    const dueAt = Date.parse(String(row.due_at || ""));
+    if (!["resolved", "closed"].includes(status) && Number.isFinite(dueAt) && dueAt < now) overdue += 1;
+  });
+
+  return {
+    total: rows.length,
+    open,
+    in_progress: inProgress,
+    resolved_30d: resolved30d,
+    overdue,
+    avg_resolution_days: resolvedWithDuration
+      ? Math.round((totalResolutionMs / resolvedWithDuration / 86_400_000) * 10) / 10
+      : null,
+    by_category: byCategory,
+  };
+}
+
 function findHostedCase(rows: StoredRow[], caseId: string) {
   return rows.find((item) => String(item.id) === caseId || String(Number(item.id)) === caseId);
 }
@@ -1311,6 +1355,11 @@ export async function GET(request: NextRequest, context: ApiRouteContext) {
   if (route === "/cases") {
     const postgresRows = await loadPostgresCases().catch(() => null);
     return json(postgresRows || [...store.cases].reverse());
+  }
+  if (route === "/cases/summary") {
+    const postgresRows = await loadPostgresCases().catch(() => null);
+    const rows = postgresRows || (await loadCases(store)).rows;
+    return json(summarizeCases(rows));
   }
   if (route === "/cases/export.csv") {
     const postgresRows = await loadPostgresCases().catch(() => null);

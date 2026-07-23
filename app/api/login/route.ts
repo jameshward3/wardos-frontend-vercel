@@ -8,6 +8,10 @@ function safeNextPath(value: string | null) {
 }
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ detail: "Not found" }, { status: 404 });
+  }
+
   const password = process.env.WARDOS_SITE_PASSWORD?.trim();
   const formData = await request.formData();
   const submittedPassword = String(formData.get("password") || "").trim();

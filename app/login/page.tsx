@@ -3,6 +3,7 @@ export default function LoginPage({
 }: {
   searchParams: { error?: string; next?: string };
 }) {
+  const passwordFallbackEnabled = process.env.NODE_ENV !== "production";
   const nextQuery = searchParams.next ? `?next=${encodeURIComponent(searchParams.next)}` : "";
   const errorMessages: Record<string, string> = {
     "1": "Password not recognized.",
@@ -26,18 +27,22 @@ export default function LoginPage({
           <span>G</span>
           Continue with Google Workspace
         </a>
-        <div className="login-divider">
-          <span>Password fallback</span>
-        </div>
-        <form className="form" action={`/api/login${nextQuery}`} method="post">
-          <label>
-            Site Password
-            <input type="password" name="password" autoComplete="current-password" required />
-          </label>
-          <button className="primary" type="submit">
-            Sign in
-          </button>
-        </form>
+        {passwordFallbackEnabled ? (
+          <>
+            <div className="login-divider">
+              <span>Local password fallback</span>
+            </div>
+            <form className="form" action={`/api/login${nextQuery}`} method="post">
+              <label>
+                Site Password
+                <input type="password" name="password" autoComplete="current-password" required />
+              </label>
+              <button className="primary" type="submit">
+                Sign in
+              </button>
+            </form>
+          </>
+        ) : null}
       </section>
     </main>
   );

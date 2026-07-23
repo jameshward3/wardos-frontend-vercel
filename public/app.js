@@ -306,7 +306,10 @@ async function postJson(path, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `${response.status} ${response.statusText}`);
+  }
   return response.json();
 }
 

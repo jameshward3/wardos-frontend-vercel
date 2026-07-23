@@ -6,7 +6,6 @@ const PUBLIC_PATHS = [
   "/logout",
   "/app.js",
   "/assets",
-  "/api/login",
   "/api/auth/google",
   "/api/voter-intel",
   "/voter-intel",
@@ -15,7 +14,9 @@ const PUBLIC_PATHS = [
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const isLocalPasswordLogin = process.env.NODE_ENV !== "production" && pathname === "/api/login";
+  const isPublicPath =
+    isLocalPasswordLogin || PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isAuthenticated = await hasValidSession(request);
   // /ward-report is a public newsletter meant to be iframe-embedded on
   // jw4o.com (Squarespace); next.config.mjs already scopes its

@@ -73,7 +73,7 @@ WARDOS_EVENT_LOG_PATH=data/events.csv
 
 Do not hardcode passwords or OAuth secrets in the repo.
 
-`WARDOS_SITE_PASSWORD` remains as an emergency fallback. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
+`WARDOS_SITE_PASSWORD` is a local-development fallback only and is disabled in production. `WARDOS_AUTH_SECRET` signs Google Workspace sessions; use a long random value.
 
 `WARDOS_API_URL` is required if the Vercel site should save and read shared dashboard data. Point it to the reachable WardOS FastAPI base URL, without a trailing slash. If this is blank, the Vercel frontend can still render, but dashboard data calls to `/api` will not reach the Mac mini backend.
 
@@ -332,7 +332,6 @@ wardos-frontend-vercel
 6. Add these environment variables:
 
 ```text
-WARDOS_SITE_PASSWORD=your-private-password
 WARDOS_AUTH_SECRET=long-random-session-secret
 WARDOS_API_URL=https://your-reachable-wardos-api.example.com
 WARDOS_MEMORY_SHEET_ID=your-google-sheet-id
@@ -436,17 +435,7 @@ james@jameswardfororange.com -> admin
 manager@jameswardfororange.com -> strategy_advisor
 ```
 
-Password fallback:
-
-1. Visit `/login`.
-2. Enter the password stored in Vercel as `WARDOS_SITE_PASSWORD`.
-4. Confirm you land on:
-
-```text
-https://wardos.jw4o.com/dashboard
-```
-
-5. Open a protected page directly, such as:
+6. Open a protected page directly, such as:
 
 ```text
 https://wardos.jw4o.com/media-monitor
@@ -454,8 +443,8 @@ https://wardos.jw4o.com/media-monitor
 
 It should load only while signed in.
 
-6. Click **Log out**.
-7. Confirm protected pages redirect back to `/login`.
+7. Click **Log out**.
+8. Confirm protected pages redirect back to `/login`.
 
 ## Media Monitor External Links
 
@@ -469,9 +458,9 @@ This keeps WardOS open while external stories open in a separate tab or window.
 
 ## Safety Notes
 
-- WardOS is private and password protected.
+- WardOS production access requires an approved Google Workspace account.
 - Google Workspace login is restricted to `jameswardfororange.com`.
-- The fallback password is read from `WARDOS_SITE_PASSWORD`.
+- The `WARDOS_SITE_PASSWORD` fallback is available only during local development.
 - Sessions use signed HTTP-only cookies.
 - Sessions expire after eight hours.
 - The frontend does not auto-send emails or publish posts.
