@@ -107,7 +107,16 @@ export function WardOSApp({ page = "dashboard" }: { page?: string }) {
         </section>
       </div>
 
-      <Script src="/app.js?v=citywide-voters-20260703a" strategy="afterInteractive" />
+      {initialPage === "legislation" ? (
+        <>
+          <Script src="/assets/legislation-tracker/budget-dashboard-data.js" strategy="afterInteractive" />
+          <Script src="/assets/legislation-tracker/seed-data.js" strategy="afterInteractive" />
+          <Script src="/assets/legislation-tracker/imported-history-data.js" strategy="afterInteractive" />
+          <Script src="/assets/legislation-tracker/archive-meeting-data.js" strategy="afterInteractive" />
+          <Script src="/assets/legislation-tracker/site-update-data.js" strategy="afterInteractive" />
+        </>
+      ) : null}
+      <Script src="/app.js?v=legislation-source-20260723a" strategy="afterInteractive" />
     </>
   );
 }

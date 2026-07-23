@@ -14,6 +14,7 @@ import {
   loadMemoryRows,
   memoryFields,
   summarizeConstituentRows,
+  updateCaseInSheet,
 } from "../../../lib/google-sheets-store";
 import {
   addPostgresCaseCommunication,
@@ -581,10 +582,9 @@ function normalizeLegislation(envelope: Record<string, unknown>) {
   if (Array.isArray(data.commitments) && String(data.summary?.title || "").toLowerCase().includes("first 100 days")) {
     return {
       ...envelope,
-      ok: false,
-      data_quality: "Legislative_tracker currently contains progress metrics, not legislation records.",
-      summary: { title: "Legislative Tracker", items_tracked: 0, in_progress: 0, completed: 0 },
+      summary: { ...(data.summary || {}), title: "Legislative Tracker", priorities_tracked: data.commitments.length },
       items: [],
+      priorities: data.commitments,
     };
   }
   const items = Array.isArray(data.items) ? data.items : Array.isArray(data.legislation) ? data.legislation : [];
@@ -1531,7 +1531,12 @@ export async function POST(request: NextRequest, context: ApiRouteContext) {
     Object.assign(caseRow, payload, { updated_at: new Date().toISOString() });
     caseRow._activity = [hostedActivity("update", `Updated ${Object.keys(payload).join(", ")}`), ...(Array.isArray(caseRow._activity) ? caseRow._activity : [])];
     store.cases = existingCases.rows;
-    if (existingCases.persistent) await writeGithubCases(store.cases, existingCases.sha);
+    if (hasGoogleSheetWriteStore()) {
+      const updated = await updateCaseInSheet(caseId, { ...payload, updated_at: caseRow.updated_at });
+      if (!updated) return json({ error: "Case not found in the shared Google Sheet." }, 404);
+    } else if (existingCases.persistent) {
+      await writeGithubCases(store.cases, existingCases.sha);
+    }
     await writeStore(store);
     return json(caseRow);
   } else if (route.match(/^\/cases\/[^/]+\/notes$/)) {

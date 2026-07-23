@@ -2080,34 +2080,75 @@ function legislationPanel(full = true) {
   `;
 }
 
-const legislativeInitiativeTemplates = [
-  { id: "initiative-term-limits", title: "Term Limits Ordinance", type: "Ordinance", status: "Research", committee: "Governance", introduced: "Drafting", nextAction: "Prepare legal memo", support: 62, impact: "High", topic: "Transparency" },
-  { id: "initiative-election-reform", title: "Election Reform", type: "Ordinance", status: "Research", committee: "Governance", introduced: "Drafting", nextAction: "Review state constraints", support: 58, impact: "High", topic: "Democracy" },
-  { id: "initiative-public-comment", title: "5 Minute Public Comment Restoration", type: "Resolution", status: "Ready for Review", committee: "Council Rules", introduced: "Draft", nextAction: "Build sponsor support", support: 76, impact: "High", topic: "Public Comment" },
-  { id: "initiative-scotland-bid", title: "Scotland Road BID", type: "Ordinance", status: "In Committee", committee: "Economic Development", introduced: "Concept", nextAction: "Meet business owners", support: 54, impact: "Medium", topic: "Economic Development" },
-  { id: "initiative-parking-reform", title: "Parking Reform", type: "Ordinance", status: "In Review", committee: "Public Safety", introduced: "Concept", nextAction: "Request traffic data", support: 68, impact: "High", topic: "Traffic & Parking" },
-  { id: "initiative-transparency-dashboard", title: "Transparency Dashboard Initiatives", type: "Resolution", status: "In Progress", committee: "Technology", introduced: "Draft", nextAction: "Define data sources", support: 82, impact: "High", topic: "Transparency" },
-  { id: "initiative-tree-canopy", title: "Tree Canopy Program", type: "Ordinance", status: "Research", committee: "Public Works", introduced: "Drafting", nextAction: "Map tree requests", support: 73, impact: "Medium", topic: "Trees" },
-  { id: "initiative-budget-accountability", title: "Budget Accountability Measures", type: "Resolution", status: "In Review", committee: "Finance", introduced: "Draft", nextAction: "Build fiscal dashboard", support: 71, impact: "High", topic: "Budget" },
+const legislativePriorityFallback = [
+  ["term-limits", 1, "Term Limits", "Completed", 100, "Community hearing and Council discussion."],
+  ["november-elections", 2, "Move Elections to November", "In Progress", 60, "Council vote on resolution scheduled for June 3."],
+  ["parking-standards", 3, "Better Parking Standards for New Developments", "In Progress", 50, "Planning Commission review in June."],
+  ["public-comment", 4, "Restore 5-Minute Public Comment", "In Progress", 40, "Implementation complete. Monitoring ongoing."],
+  ["responsible-budgeting", 5, "Stabilize Taxes Through Responsible Budgeting", "In Progress", 35, "Present proposed budget in June."],
+  ["scotland-road", 6, "Create a Scotland Road Business Improvement District", "Planned", 20, "Form advisory group and gather input."],
+  ["data-dashboards", 7, "Launch Public Data Dashboards", "Not Started", 0, "Define data roadmap and platform."],
+].map(([id, priority, title, status, progress, nextAction]) => ({ id, priority, title, status, progress, nextAction }));
+
+function legislativePriorityRows() {
+  const source = state.githubLegislation?.priorities?.length ? state.githubLegislation.priorities : legislativePriorityFallback;
+  return source.map((item, index) => ({
+    id: `priority-${item.id || index}`,
+    bill_number: `Priority ${item.priority || index + 1}`,
+    title: item.title,
+    type: "Council Priority",
+    status: item.status || "Not Started",
+    progress: Number(item.progress || 0),
+    notes: item.lastUpdate || item.description || "",
+    committee: item.committee || inferCommittee(`${item.title} ${item.description || ""}`),
+    sponsor: "Councilman Ward",
+    introduced: item.lastUpdateDate || "Priority plan",
+    nextAction: item.nextStep || "Assign next step",
+    support: Number(item.progress || 0),
+    impact: inferImpact(`${item.title} ${item.description || ""}`),
+    topic: inferTopic(`${item.title} ${item.description || ""}`),
+    source: "My Priority",
+    isPriority: true,
+  }));
+}
+
+const councilMembers = ["Coley", "Eason", "Hilbert", "Montague", "Ross", "Summers-Johnson", "Wooten"];
+const councilMemberKeys = [
+  "Hon. Kerry J. Coley",
+  "Hon. Tency A. Eason",
+  "Hon. Quantavia L. Hilbert",
+  "Hon. Weldon M. Montague, III",
+  "Hon. Clifford R. Ross",
+  "Hon. Jamie B. Summers-Johnson",
+  "Hon. Adrienne K. Wooten",
 ];
 
-const councilMembers = ["Ward", "Timberlake", "Cruz", "Alves", "Green", "Davis", "Warren"];
-const voteMatrixRows = [
-  ["Budget Accountability Measures", ["Yes", "Yes", "Yes", "Yes", "No", "Yes", "Yes"]],
-  ["Parking Reform", ["Yes", "Yes", "Abstain", "Yes", "Yes", "No", "Yes"]],
-  ["Tree Canopy Program", ["Yes", "No", "No", "Yes", "No", "Yes", "No"]],
-  ["Public Comment Restoration", ["Yes", "Yes", "Yes", "Yes", "Yes", "Yes", "Yes"]],
-];
+function trackedVoteRows() {
+  return (window.ORANGE_TRACKER_SEED?.items || [])
+    .filter((item) => Object.keys(item.votes || {}).length)
+    .slice(-8)
+    .reverse()
+    .map((item) => [
+      item.resolutionNumber || item.ordinanceNumber || item.title,
+      councilMemberKeys.map((member) => titleCase(item.votes?.[member] || "no record")),
+    ]);
+}
 
-const legislationSponsors = [
-  { name: "James Ward", role: "Primary sponsor", alignment: 100, focus: "South Ward accountability, public comment, transparency", items: ["Public Comment Restoration", "Budget Accountability Measures", "Transparency Dashboard Initiatives"] },
-  { name: "Brittnee Timberlake", role: "Council sponsor", alignment: 78, focus: "Community development, education, constituent services", items: ["Tree Canopy Program", "Parking Reform"] },
-  { name: "Carlos Cruz", role: "Potential co-sponsor", alignment: 58, focus: "Planning, parking, zoning review", items: ["Parking Reform", "Scotland Road BID"] },
-  { name: "Mike Alves", role: "Frequent yes vote", alignment: 84, focus: "Public works, recreation, infrastructure", items: ["Tree Canopy Program", "Budget Accountability Measures"] },
-  { name: "Ted Green", role: "Needs briefing", alignment: 44, focus: "Fiscal review, mayoral coordination", items: ["Budget Accountability Measures"] },
-  { name: "Alfred Davis", role: "Swing vote", alignment: 63, focus: "Finance, public safety, implementation details", items: ["Parking Reform", "Tree Canopy Program"] },
-  { name: "Mayor Warren", role: "Administration", alignment: 68, focus: "Department execution and agenda movement", items: ["Budget Accountability Measures", "Transparency Dashboard Initiatives"] },
-];
+function legislationSponsors() {
+  const items = window.ORANGE_TRACKER_SEED?.items || [];
+  return councilMemberKeys.map((member, index) => {
+    const recorded = items.map((item) => item.votes?.[member]).filter((vote) => vote && vote !== "absent");
+    const yes = recorded.filter((vote) => vote === "yes").length;
+    const sponsored = items.filter((item) => String(item.discussion || "").includes(member.replace(/^Hon\. |, III$/g, "")));
+    return {
+      name: councilMembers[index],
+      role: sponsored.length ? `${sponsored.length} sponsored item${sponsored.length === 1 ? "" : "s"} identified` : "Council member",
+      alignment: recorded.length ? Math.round((yes / recorded.length) * 100) : 0,
+      focus: `${recorded.length} recorded votes in the imported meeting history`,
+      items: sponsored.slice(0, 3).map((item) => item.resolutionNumber || item.ordinanceNumber || item.title),
+    };
+  });
+}
 
 const legislativeDepartments = [
   { name: "Planning & Zoning", queue: 12, owner: "Planning Board / Zoning Board", risk: "High", next: "Itemize agendas, development applications, and hearing outcomes" },
@@ -2126,6 +2167,26 @@ const legislativeCalendar = [
 ];
 
 function normalizedLegislationRows() {
+  const trackerRows = (window.ORANGE_TRACKER_SEED?.items || []).map((item, index) => ({
+    id: `tracker-${item.id || index}`,
+    bill_number: item.resolutionNumber || item.ordinanceNumber || item.id || `ITEM-${index + 1}`,
+    title: item.title,
+    status: item.status || "pending",
+    notes: item.discussion || item.publicComments || item.rawText || "",
+    progress: statusProgress(item.status),
+    committee: item.budgetCategory || inferCommittee(item.title || ""),
+    sponsor: inferLegislationSponsor(item),
+    introduced: item.meetingDate || item.dateIntroduced || "Source pending",
+    nextAction: trackerNextAction(item),
+    support: voteSupport(item.votes),
+    impact: inferImpact(`${item.title} ${item.discussion || ""}`),
+    source: "Legislative Tracker",
+    topic: inferTopic(`${item.title} ${item.budgetCategory || ""}`),
+    votes: item.votes || {},
+    amount: item.amount || 0,
+    sourceDoc: item.sourceDoc || "",
+    publicComments: item.publicComments || "",
+  }));
   const githubRows = (state.githubLegislation?.items || []).map((item, index) => ({
     id: `github-${item.id || index}`,
     bill_number: item.id || item.bill_number || `GH-${index + 1}`,
@@ -2158,7 +2219,25 @@ function normalizedLegislationRows() {
     source: "Local",
     topic: inferTopic(`${item.title} ${item.notes}`),
   }));
-  return filterRows([...githubRows, ...localRows], ["bill_number", "title", "status", "notes", "committee", "topic"]);
+  const priorities = legislativePriorityRows();
+  return filterRows([...priorities, ...trackerRows, ...githubRows, ...localRows], ["bill_number", "title", "status", "notes", "committee", "topic", "source"]);
+}
+
+function inferLegislationSponsor(item) {
+  const match = String(item.discussion || "").match(/Sponsored by Councilmember ([^.]+)/i);
+  return match ? match[1] : "Not listed";
+}
+
+function voteSupport(votes = {}) {
+  const recorded = Object.values(votes).filter((vote) => vote && vote !== "absent");
+  if (!recorded.length) return 0;
+  return Math.round((recorded.filter((vote) => String(vote).toLowerCase() === "yes").length / recorded.length) * 100);
+}
+
+function trackerNextAction(item) {
+  if (/pending|postponed/i.test(item.status)) return "Monitor next agenda and minutes";
+  if (/failed|withdrawn/i.test(item.status)) return "Review whether follow-up is needed";
+  return "Track implementation and resident impact";
 }
 
 function statusProgress(status = "") {
@@ -2204,15 +2283,16 @@ function legislationMetrics(rows) {
     passed: rows.filter((row) => /pass|adopt|complete/i.test(row.status)).length,
     failed: rows.filter((row) => /fail|withdraw/i.test(row.status)).length,
     tabled: rows.filter((row) => /table/i.test(row.status)).length,
-    initiatives: legislativeInitiativeTemplates.length,
+    initiatives: legislativePriorityRows().length,
   };
 }
 
 function legislationPage() {
   const rows = normalizedLegislationRows();
   const metrics = legislationMetrics(rows);
-  const detailRows = [...rows, ...legislativeInitiativeTemplates];
-  const selected = detailRows.find((row) => row.id === state.selectedLegislationId) || rows[0] || legislativeInitiativeTemplates[0];
+  const priorities = legislativePriorityRows();
+  const detailRows = [...rows, ...priorities];
+  const selected = detailRows.find((row) => row.id === state.selectedLegislationId) || priorities[0] || rows[0];
   state.selectedLegislationId = selected?.id || "";
   const activeTab = state.legislationTab || "overview";
   return h`
@@ -2230,7 +2310,7 @@ function legislationPage() {
       ${[
         ["overview", "Overview"],
         ["all", "All Legislation"],
-        ["initiatives", "My Initiatives"],
+        ["initiatives", "My Priorities"],
         ["votes", "Votes"],
         ["sponsors", "Sponsors"],
         ["departments", "Departments"],
@@ -2240,12 +2320,12 @@ function legislationPage() {
       <span class="select-button">Date Range: Last 12 Months</span>
     </div>
     <section class="grid metrics leg-metrics">
-      ${legMetric("Total Legislation", metrics.all, "Volume tracked across GitHub and local entries", "purple")}
+      ${legMetric("Total Tracked", metrics.all, "City legislation and your priorities in one view", "purple")}
       ${legMetric("In Progress", metrics.inProgress, "Moving through committee, review, or staff analysis", "blue")}
       ${legMetric("Passed", metrics.passed, "Adopted or completed items", "green")}
       ${legMetric("Failed / Withdrawn", metrics.failed, "Requires follow-up if priority remains", "red")}
       ${legMetric("Tabled", metrics.tabled, "Paused items that may return", "orange")}
-      ${legMetric("My Initiatives", metrics.initiatives, "James Ward sponsored or championed ideas", "purple")}
+      ${legMetric("My Priorities", metrics.initiatives, "Ward priorities tracked beside every Council item", "purple")}
     </section>
     ${legislationTabContent(activeTab, rows)}
     ${state.legislationDetailOpen ? legislationDetailDrawer(selected) : ""}
@@ -2280,7 +2360,7 @@ function legislationTabContent(tab, rows) {
 }
 
 function allLegislationSection(rows) {
-  const visibleRows = rows.length ? rows : legislativeInitiativeTemplates.map((item) => ({ ...item, bill_number: item.type, source: "Initiative", progress: item.support, notes: item.nextAction }));
+  const visibleRows = rows.length ? rows : legislativePriorityRows();
   return h`
     <section class="leg-layout">
       <main class="leg-main">
@@ -2321,7 +2401,8 @@ function allLegislationSection(rows) {
 }
 
 function initiativesSection() {
-  const grouped = legislativeInitiativeTemplates.reduce((acc, item) => {
+  const priorities = legislativePriorityRows();
+  const grouped = priorities.reduce((acc, item) => {
     acc[item.status] = [...(acc[item.status] || []), item];
     return acc;
   }, {});
@@ -2329,17 +2410,17 @@ function initiativesSection() {
     <section class="leg-layout">
       <main class="leg-main">
         <section class="panel">
-          <div class="panel-header"><h2>Current Initiatives</h2><button class="primary" data-open-draft="New Ward Initiative">Add Initiative</button></div>
+          <div class="panel-header"><h2>My Priorities</h2><button class="primary" data-open-draft="New Ward Priority">Add Priority</button></div>
           <div class="panel-body initiative-board">
-            ${["Research", "Ready for Review", "In Review", "In Committee", "In Progress"].map((status) => `
+            ${["Not Started", "Planned", "In Progress", "Completed"].map((status) => `
               <div class="initiative-column">
                 <h3>${status}<small>${(grouped[status] || []).length}</small></h3>
                 ${(grouped[status] || []).map((item) => `
                   <article class="initiative-card" data-legislation-id="${item.id}">
                     <strong>${item.title}</strong>
-                    <small>${item.type} · ${item.committee}</small>
+                    <small>Priority ${item.bill_number.replace("Priority ", "")} · ${item.committee}</small>
                     <p>${item.nextAction}</p>
-                    <div><span class="status ${item.impact === "High" ? "hot" : "warn"}">${item.impact}</span><span>${item.support}% support</span></div>
+                    <div><span class="status ${statusClass(item.status)}">${item.status}</span><span>${item.progress}% complete</span></div>
                   </article>
                 `).join("") || `<div class="empty small">No items</div>`}
               </div>
@@ -2350,19 +2431,21 @@ function initiativesSection() {
       </main>
       <aside class="leg-right">
         ${legislationQuickActions("Initiatives")}
-        ${aiInsightsRail(legislativeInitiativeTemplates)}
+        ${aiInsightsRail(priorities)}
       </aside>
     </section>
   `;
 }
 
 function votesSection(rows) {
+  const voteMatrixRows = trackedVoteRows();
   const voteStats = councilMembers.map((member, index) => {
     const votes = voteMatrixRows.map(([, rowVotes]) => rowVotes[index]);
-    const yes = votes.filter((vote) => vote === "Yes").length;
-    const no = votes.filter((vote) => vote === "No").length;
-    const abstain = votes.filter((vote) => vote === "Abstain").length;
-    return { member, yes, no, abstain, alignment: Math.round((yes / Math.max(1, votes.length)) * 100) };
+    const recorded = votes.filter((vote) => vote !== "No Record" && vote !== "Absent");
+    const yes = recorded.filter((vote) => vote === "Yes").length;
+    const no = recorded.filter((vote) => vote === "No").length;
+    const abstain = recorded.filter((vote) => vote === "Abstain").length;
+    return { member, yes, no, abstain, alignment: Math.round((yes / Math.max(1, recorded.length)) * 100) };
   });
   return h`
     <section class="leg-layout">
@@ -2397,7 +2480,7 @@ function sponsorsSection() {
         <section class="panel">
           <div class="panel-header"><h2>Sponsors & Coalition Map</h2><button class="link" data-open-draft="Sponsor Outreach Plan">Create outreach plan →</button></div>
           <div class="panel-body sponsor-grid">
-            ${legislationSponsors.map((sponsor) => `
+            ${legislationSponsors().map((sponsor) => `
               <article class="sponsor-card">
                 <div class="sponsor-head">
                   <strong>${sponsor.name}</strong>
@@ -2413,7 +2496,7 @@ function sponsorsSection() {
       </main>
       <aside class="leg-right">
         ${legislationQuickActions("Sponsors")}
-        ${aiInsightsRail(legislativeInitiativeTemplates)}
+        ${aiInsightsRail(legislativePriorityRows())}
       </aside>
     </section>
   `;
@@ -2541,7 +2624,7 @@ function legMetric(label, value, detail, tone) {
 
 function legislationPipeline(rows) {
   const counts = [
-    ["Introduced", rows.length + legislativeInitiativeTemplates.length],
+    ["Introduced", rows.length],
     ["In Committee", rows.filter((row) => /committee/i.test(row.status)).length + 3],
     ["In Review", rows.filter((row) => /review|progress/i.test(row.status)).length + 2],
     ["Ready for Vote", rows.filter((row) => /vote|ready/i.test(row.status)).length + 1],
@@ -2583,12 +2666,12 @@ function insightCard(title, copy, tone) {
 function myInitiativesPanel() {
   return h`
     <section class="panel">
-      <div class="panel-header"><h2>My Initiatives</h2><button class="link" data-open-draft="Legislative Initiative">View all my initiatives →</button></div>
+      <div class="panel-header"><h2>My Priorities</h2><button class="link" data-open-draft="Legislative Priority">View all my priorities →</button></div>
       <div class="panel-body leg-table-wrap">
         <table class="leg-table">
-          <thead><tr><th>Legislation</th><th>Status</th><th>Committee</th><th>Introduced</th><th>Next Action</th><th>Support</th><th>Impact</th></tr></thead>
+          <thead><tr><th>Priority</th><th>Status</th><th>Area</th><th>Last Update</th><th>Next Action</th><th>Progress</th><th>Impact</th></tr></thead>
           <tbody>
-            ${legislativeInitiativeTemplates.map((item) => `
+            ${legislativePriorityRows().map((item) => `
               <tr data-legislation-id="${item.id}">
                 <td><strong>☆ ${item.title}</strong><small>${item.type} · ${item.topic}</small></td>
                 <td><span class="status ${item.status.includes("Ready") ? "warn" : item.status.includes("Progress") || item.status.includes("Committee") ? "" : "good"}">${item.status}</span></td>
@@ -2607,6 +2690,7 @@ function myInitiativesPanel() {
 }
 
 function voteMatrixPanel() {
+  const voteMatrixRows = trackedVoteRows();
   return h`
     <section class="panel">
       <div class="panel-header"><h2>Vote Matrix <span class="muted">(Recent Votes)</span></h2><button class="link" data-open-draft="Vote Analysis">View all votes →</button></div>
@@ -2616,7 +2700,7 @@ function voteMatrixPanel() {
           <tbody>
             ${voteMatrixRows.map(([title, votes]) => `
               <tr><td>${title}</td>${votes.map((vote) => `<td class="vote ${vote.toLowerCase()}">${vote}</td>`).join("")}</tr>
-            `).join("")}
+            `).join("") || `<tr><td colspan="8">No recorded roll-call votes in the loaded source.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -3896,7 +3980,7 @@ function buildSearchIndex() {
     keywords: [item.topic, item.sponsor, item.source],
     action: { legislationId: item.id, legislationTab: "all" },
   })));
-  legislativeInitiativeTemplates.forEach((item) => entries.push(searchEntry({
+  legislativePriorityRows().forEach((item) => entries.push(searchEntry({
     section: "Initiatives",
     type: item.status,
     title: item.title,

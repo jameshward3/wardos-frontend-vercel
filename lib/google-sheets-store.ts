@@ -469,6 +469,37 @@ export async function appendCaseToSheet(row: Record<string, unknown>) {
   ]);
 }
 
+export async function updateCaseInSheet(caseId: string, patch: Record<string, unknown>) {
+  if (!hasGoogleSheetWriteStore()) throw new Error("WardOS Google Sheets write credentials are not configured");
+  const title = caseSheetName();
+  const values = await readValues(title);
+  if (!values.length) return false;
+
+  const headers = values[0].map(normalizeHeader);
+  const idColumn = headers.indexOf("id");
+  if (idColumn === -1) throw new Error("The constituent case sheet is missing its id column");
+  const rowIndex = values.slice(1).findIndex((row) => String(row[idColumn] ?? "").trim() === String(caseId).trim());
+  if (rowIndex === -1) return false;
+
+  const writablePatch = Object.entries(patch).filter(([field]) => field !== "id" && field !== "created_at");
+  writablePatch.forEach(([field]) => {
+    const normalized = normalizeHeader(field);
+    if (!headers.includes(normalized)) {
+      headers.push(normalized);
+      values[0].push(field);
+    }
+  });
+
+  const target = values[rowIndex + 1];
+  writablePatch.forEach(([field, value]) => {
+    const column = headers.indexOf(normalizeHeader(field));
+    while (target.length <= column) target.push("");
+    target[column] = String(value ?? "");
+  });
+  await writeValues(title, values);
+  return true;
+}
+
 export async function appendEventToSheet(row: Record<string, unknown>) {
   if (!hasGoogleSheetWriteStore()) throw new Error("WardOS Google Sheets write credentials are not configured");
   const headers = [
